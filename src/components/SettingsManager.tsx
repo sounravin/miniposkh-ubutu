@@ -32,6 +32,7 @@ interface SettingsManagerProps {
   currentUser?: User | null;
   onLogout?: () => void;
   onOpenProfileModal?: () => void;
+  onOpenA2HSGuide?: () => void;
 }
 
 export const SettingsManager: React.FC<SettingsManagerProps> = ({
@@ -41,7 +42,8 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
   language,
   currentUser,
   onLogout,
-  onOpenProfileModal
+  onOpenProfileModal,
+  onOpenA2HSGuide
 }) => {
   const isKh = language === 'kh';
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -555,6 +557,41 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Add to Home Screen Quick Guide Banner */}
+      {onOpenA2HSGuide && (
+        <div className="bg-gradient-to-r from-indigo-50 via-purple-50/50 to-indigo-50 p-6 rounded-2xl border border-indigo-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-md shadow-indigo-200 shrink-0">
+              📲
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h5 className="font-bold text-sm text-slate-900">
+                  {isKh ? 'របៀបដាក់លើអេក្រង់ដើម (Add to Home Screen)' : 'Add MINI MART POS to Home Screen'}
+                </h5>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                  PWA APP
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isKh 
+                  ? 'មើលការណែនាំដំឡើង App លើ iPhone (Safari) ឬ Android (Chrome) ដើម្បីងាយស្រួលបើកលក់ភ្លាមៗ' 
+                  : 'Step-by-step installation instructions for iPhone, iPad, Android, and Desktop.'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenA2HSGuide}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-200 transition-all cursor-pointer whitespace-nowrap"
+          >
+            <span>{isKh ? 'មើលរបៀបដំឡើង' : 'View Install Guide'}</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

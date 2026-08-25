@@ -45,7 +45,7 @@ const AUTH_PRESET_AVATARS = [
 ];
 
 interface WelcomeAuthPageProps {
-  onLoginSuccess: (user: User) => void;
+  onLoginSuccess: (user: User, isNewRegistration?: boolean) => void;
   language: 'en' | 'kh';
   setLanguage: (lang: 'en' | 'kh') => void;
   users: User[];
@@ -307,7 +307,7 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
 
       setSuccessMessage(isKh ? 'ចុះឈ្មោះជោគជ័យ! កំពុងចូលប្រព័ន្ធ...' : 'Registration successful! Entering POS...');
       setTimeout(() => {
-        onLoginSuccess(newUser);
+        onLoginSuccess(newUser, true);
       }, 400);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to register account.');

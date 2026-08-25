@@ -36,6 +36,7 @@ interface SidebarProps {
   onCloseMobile?: () => void;
   onOpenCustomerMenuShare?: () => void;
   onOpenIncomingOnlineOrders?: () => void;
+  onOpenA2HSGuide?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -51,7 +52,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenProfileModal,
   onCloseMobile,
   onOpenCustomerMenuShare,
-  onOpenIncomingOnlineOrders
+  onOpenIncomingOnlineOrders,
+  onOpenA2HSGuide
 }) => {
   const isKh = language === 'kh';
 
@@ -220,6 +222,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bottom Status & User Profile Card */}
       <div className="border-t border-slate-100 bg-slate-50/70 p-3 space-y-2.5">
+        {/* Add to Home Screen Guide Button */}
+        {onOpenA2HSGuide && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenA2HSGuide();
+              if (onCloseMobile) onCloseMobile();
+            }}
+            id="sidebar-a2hs-guide-btn"
+            className="w-full flex items-center justify-between p-2 rounded-2xl bg-gradient-to-r from-indigo-50 via-purple-50/60 to-indigo-50 hover:from-indigo-100 hover:to-purple-100 border border-indigo-200/80 hover:border-indigo-300 transition-all duration-200 group shadow-2xs cursor-pointer"
+            title={isKh ? 'របៀបដាក់លើអេក្រង់ដើម (Add to Home Screen)' : 'Add to Home Screen Guide'}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform text-xs">
+                📲
+              </div>
+              <div className="min-w-0 text-left">
+                <div className="text-xs font-bold text-indigo-950 truncate">
+                  {isKh ? 'Add to Home Screen' : 'Install / Add to Home'}
+                </div>
+                <div className="text-[10px] text-indigo-600 font-medium truncate">
+                  {isKh ? 'របៀបដំឡើងលើទូរស័ព្ទ' : 'Setup POS on Phone'}
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold bg-white text-indigo-700 px-2 py-0.5 rounded-lg border border-indigo-200 shadow-2xs shrink-0">
+              {isKh ? 'មើល' : 'View'}
+            </span>
+          </button>
+        )}
+
         {/* Telegram 24/7 Support Option */}
         <a
           href="https://t.me/laymeancamera"

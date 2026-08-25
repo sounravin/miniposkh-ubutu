@@ -42,6 +42,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { CustomerCatalogView } from './components/CustomerCatalogView';
 import { CustomerMenuShareModal } from './components/CustomerMenuShareModal';
 import { IncomingOnlineOrdersDrawer } from './components/IncomingOnlineOrdersDrawer';
+import { AddToHomeScreenGuideModal } from './components/AddToHomeScreenGuideModal';
 import { Share2 } from 'lucide-react';
 import {
   initializeFirestoreDatabase,
@@ -325,7 +326,7 @@ export default function App() {
   }, [language]);
 
   // Auth login handler: fetches latest dataset from Cloud and caches in Local Storage
-  const handleLoginSuccess = async (user: User) => {
+  const handleLoginSuccess = async (user: User, isNewRegistration = false) => {
     setCurrentUser(user);
     setCashierName(user.fullName);
     localStorage.setItem('minipos_auth_user', JSON.stringify(user));
@@ -334,6 +335,17 @@ export default function App() {
     setOrderNote('');
     setCustomerName('');
     setActiveView('pos');
+
+    // Trigger Add to Home Screen guide ONLY ONCE when registering for the first time
+    if (isNewRegistration) {
+      const promptedKey = `minipos_a2hs_prompted_${user.id}`;
+      const alreadyPrompted = localStorage.getItem(promptedKey);
+      if (!alreadyPrompted) {
+        setIsA2HSGuideOpen(true);
+        localStorage.setItem(promptedKey, 'true');
+        localStorage.setItem('minipos_a2hs_global_seen', 'true');
+      }
+    }
 
     try {
       const cloudData = await fetchAllCloudData();
@@ -395,6 +407,7 @@ export default function App() {
   const [activeReceiptOrder, setActiveReceiptOrder] = useState<Order | null>(null);
   const [isCustomerMenuShareOpen, setIsCustomerMenuShareOpen] = useState(false);
   const [isIncomingOrdersDrawerOpen, setIsIncomingOrdersDrawerOpen] = useState(false);
+  const [isA2HSGuideOpen, setIsA2HSGuideOpen] = useState(false);
 
   // BroadcastChannel listener for real-time customer online orders
   useEffect(() => {
@@ -975,6 +988,13 @@ export default function App() {
             language={language}
           />
         )}
+        <AddToHomeScreenGuideModal
+          isOpen={isA2HSGuideOpen}
+          onClose={() => setIsA2HSGuideOpen(false)}
+          language={language}
+          userName={currentUser?.fullName}
+          userId={currentUser?.id}
+        />
       </>
     );
   }
@@ -1004,6 +1024,7 @@ export default function App() {
           onCloseMobile={() => setMobileSidebarOpen(false)}
           onOpenCustomerMenuShare={() => setIsCustomerMenuShareOpen(true)}
           onOpenIncomingOnlineOrders={() => setIsIncomingOrdersDrawerOpen(true)}
+          onOpenA2HSGuide={() => setIsA2HSGuideOpen(true)}
         />
       </div>
 
@@ -1234,6 +1255,7 @@ export default function App() {
               currentUser={currentUser}
               onLogout={handleLogout}
               onOpenProfileModal={() => setIsProfileModalOpen(true)}
+              onOpenA2HSGuide={() => setIsA2HSGuideOpen(true)}
             />
           )}
         </main>
@@ -1318,6 +1340,15 @@ export default function App() {
         language={language}
         currentUser={currentUser}
         users={users}
+      />
+
+      {/* Add To Home Screen One-Time First Registration Guide Modal */}
+      <AddToHomeScreenGuideModal
+        isOpen={isA2HSGuideOpen}
+        onClose={() => setIsA2HSGuideOpen(false)}
+        language={language}
+        userName={currentUser?.fullName}
+        userId={currentUser?.id}
       />
     </div>
   );
