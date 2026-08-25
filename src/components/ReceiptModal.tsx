@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { X, Printer, Download, Check, Share2, Sparkles, Loader2, Image as ImageIcon } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
+import QRCode from 'qrcode';
 import { Order, ShopSettings, User } from '../types';
 import { formatUSD, formatKHR } from '../utils/currency';
 import { Logo } from './Logo';
@@ -28,17 +29,102 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isExportingJpg, setIsExportingJpg] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [sanitizedLogoUrl, setSanitizedLogoUrl] = useState<string | null>(null);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   // Find order owner user or current user to apply custom per-user Invoice branding
   const orderOwnerUser = (order.userId ? users.find(u => u.id === order.userId) : null) || currentUser;
 
   // Resolve isolated custom invoice branding
-  const displayLogo = orderOwnerUser?.invoiceLogo || null;
+  const rawLogo = orderOwnerUser?.invoiceLogo?.trim() || null;
   const displayShopName = orderOwnerUser?.invoiceShopName || settings.shopName || 'MINI MART POS';
   const displayShopNameKh = orderOwnerUser?.invoiceShopNameKh || settings.shopNameKh || 'មីនី ម៉ាត';
   const displayAddress = orderOwnerUser?.invoiceAddress || settings.address || 'Phnom Penh, Cambodia';
   const displayPhone = orderOwnerUser?.invoicePhone || settings.phone || '+855 12 345 678';
   const displayFooter = orderOwnerUser?.invoiceFooterText || settings.receiptFooterText || 'Thank you for shopping with us! Please come again.';
+
+  // 1. Generate local offline Base64 QR Code to prevent missing QR during export
+  useEffect(() => {
+    let isMounted = true;
+    const qrPayload = `RESTODASH-${order.orderNumber || order.id || Date.now()}`;
+    
+    QRCode.toDataURL(qrPayload, {
+      width: 140,
+      margin: 1,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    })
+      .then((url) => {
+        if (isMounted) setQrCodeDataUrl(url);
+      })
+      .catch((err) => {
+        console.error('Failed to generate offline QR code:', err);
+        // Fallback to static data
+        if (isMounted) setQrCodeDataUrl(`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(qrPayload)}`);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [order.orderNumber, order.id]);
+
+  // 2. Pre-sanitize and convert any remote/blob invoice logo to embedded Data URL for flawless html-to-image export
+  useEffect(() => {
+    let isMounted = true;
+    setLogoLoadFailed(false);
+
+    if (!rawLogo) {
+      setSanitizedLogoUrl(null);
+      return;
+    }
+
+    // If already base64 data URL, use directly
+    if (rawLogo.startsWith('data:image/')) {
+      setSanitizedLogoUrl(rawLogo);
+      return;
+    }
+
+    // Convert external URL / blob to clean base64 canvas data URL
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.referrerPolicy = 'no-referrer';
+    
+    img.onload = () => {
+      if (!isMounted) return;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 200;
+        canvas.height = img.naturalHeight || 200;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL('image/png');
+          setSanitizedLogoUrl(dataUrl);
+        } else {
+          setSanitizedLogoUrl(rawLogo);
+        }
+      } catch (err) {
+        console.warn('Canvas conversion notice for logo:', err);
+        setSanitizedLogoUrl(rawLogo);
+      }
+    };
+
+    img.onerror = () => {
+      if (!isMounted) return;
+      console.warn('Custom logo failed to load, falling back to vector logo');
+      setLogoLoadFailed(true);
+      setSanitizedLogoUrl(null);
+    };
+
+    img.src = rawLogo;
+
+    return () => {
+      isMounted = false;
+    };
+  }, [rawLogo]);
 
   const handlePrint = () => {
     window.print();
@@ -49,22 +135,52 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
     try {
       setIsExportingJpg(true);
-      // Generate clean JPEG with high pixel density
-      const dataUrl = await toJpeg(receiptRef.current, {
-        quality: 0.95,
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        cacheBust: true,
-      });
 
-      // Create download link
+      // Ensure all images inside the receipt are loaded before rendering
+      const imgElements = Array.from(receiptRef.current.querySelectorAll<HTMLImageElement>('img'));
+      await Promise.all(
+        imgElements.map((img: HTMLImageElement) => {
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+          return new Promise((res) => {
+            img.onload = () => res(true);
+            img.onerror = () => res(true);
+            setTimeout(() => res(true), 300); // 300ms safety timeout
+          });
+        })
+      );
+
+      // Small delay for DOM layout stability
+      await new Promise((r) => setTimeout(r, 60));
+
+      const exportOptions = {
+        quality: 0.98,
+        backgroundColor: '#ffffff',
+        pixelRatio: 3, // High DPI for crystal clear text & barcode
+        cacheBust: true,
+        style: {
+          transform: 'none',
+          borderRadius: '0px'
+        }
+      };
+
+      // Warm-up pass for WebKit / iOS Safari to avoid blank image drops
+      try {
+        await toJpeg(receiptRef.current, exportOptions);
+      } catch (warmupErr) {
+        // Continue to final pass
+      }
+
+      // Final high-res export
+      const dataUrl = await toJpeg(receiptRef.current, exportOptions);
+
+      // Trigger standard download
       const link = document.createElement('a');
       link.download = `Invoice-${order.orderNumber || Date.now()}.jpg`;
       link.href = dataUrl;
       link.click();
 
       setExportSuccess(true);
-      setTimeout(() => setExportSuccess(false), 2500);
+      setTimeout(() => setExportSuccess(false), 3000);
     } catch (error) {
       console.error('Failed to export invoice as JPG:', error);
       alert(isKh ? 'បរាជ័យក្នុងការ Export រូបភាព JPG សូមសាកល្បងម្ដងទៀត!' : 'Failed to export invoice as JPG. Please try again.');
@@ -83,7 +199,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider">
               {isKh ? 'វិក្កយបត្រផ្លូវការ' : 'Receipt / Invoice'}
             </span>
-            {orderOwnerUser?.invoiceLogo && (
+            {sanitizedLogoUrl && !logoLoadFailed && (
               <span className="text-[9px] font-bold bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded-full border border-indigo-400/30">
                 Custom Logo
               </span>
@@ -91,7 +207,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+            className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -103,25 +219,30 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           className="p-6 overflow-y-auto font-mono text-xs text-slate-800 space-y-4 bg-[#ffffff]" 
           id="printable-receipt"
         >
-          {/* Shop Header with Custom User Invoice Logo or Default Logo */}
+          {/* Shop Header with Custom User Invoice Logo or Default Vector Logo */}
           <div className="text-center space-y-1.5 border-b border-dashed border-slate-300 pb-3 flex flex-col items-center">
-            {displayLogo ? (
-              <div className="p-1 bg-white rounded-2xl border border-slate-100 shadow-2xs">
+            {sanitizedLogoUrl && !logoLoadFailed ? (
+              <div className="p-1.5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs inline-flex items-center justify-center">
                 <img
-                  src={displayLogo}
+                  src={sanitizedLogoUrl}
                   alt={displayShopName}
-                  className="w-14 h-14 object-contain rounded-xl"
+                  crossOrigin="anonymous"
+                  referrerPolicy="no-referrer"
+                  onError={() => setLogoLoadFailed(true)}
+                  className="w-16 h-16 object-contain rounded-xl"
                 />
               </div>
             ) : (
-              <Logo size={42} variant="badge" />
+              <div className="p-1 bg-white rounded-2xl border border-slate-200/80 shadow-2xs inline-flex items-center justify-center">
+                <Logo size={46} variant="badge" />
+              </div>
             )}
             <div>
               <h2 className="text-base font-black font-sans text-slate-900 tracking-tight">
                 {displayShopName}
               </h2>
               {displayShopNameKh && (
-                <p className="text-[11px] text-slate-500 font-sans">{displayShopNameKh}</p>
+                <p className="text-[11px] text-slate-500 font-sans font-medium">{displayShopNameKh}</p>
               )}
             </div>
             <p className="text-[10px] text-slate-400 font-sans">{displayAddress}</p>
@@ -132,7 +253,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           <div className="text-[11px] space-y-1 border-b border-dashed border-slate-300 pb-3">
             <div className="flex justify-between">
               <span className="text-slate-500">Receipt No:</span>
-              <span className="font-bold">{order.orderNumber}</span>
+              <span className="font-bold font-mono">{order.orderNumber}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Date/Time:</span>
@@ -144,12 +265,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Cashier:</span>
-              <span>{order.cashierName}</span>
+              <span className="font-medium">{order.cashierName}</span>
             </div>
             {order.customerName && (
               <div className="flex justify-between">
                 <span className="text-slate-500">Customer:</span>
-                <span>{order.customerName}</span>
+                <span className="font-medium">{order.customerName}</span>
               </div>
             )}
           </div>
@@ -220,15 +341,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             )}
           </div>
 
-          {/* Footer note */}
+          {/* Footer note & Offline QR Code */}
           <div className="text-center space-y-2 pt-1">
             <p className="text-[11px] text-slate-500 font-sans">{displayFooter}</p>
             <div className="pt-2 flex flex-col items-center">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=RESTODASH-${order.orderNumber}`}
-                alt="Receipt QR"
-                className="w-16 h-16 opacity-85"
-              />
+              {qrCodeDataUrl ? (
+                <img
+                  src={qrCodeDataUrl}
+                  alt="Receipt QR"
+                  className="w-16 h-16 object-contain"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400 font-bold">
+                  QR
+                </div>
+              )}
               <span className="text-[9px] text-slate-400 mt-1 font-mono">{order.orderNumber}</span>
             </div>
           </div>
