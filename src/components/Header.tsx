@@ -19,7 +19,10 @@ import {
   Trash2,
   Volume2,
   VolumeX,
-  ArrowRight
+  ArrowRight,
+  Crown,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { Product, User, AppNotification, ActiveView } from '../types';
 import { Logo } from './Logo';
@@ -32,10 +35,13 @@ interface HeaderProps {
   openNewProductModal: () => void;
   language: 'en' | 'kh';
   setLanguage: (lang: 'en' | 'kh') => void;
+  theme?: 'light' | 'dark';
+  toggleTheme?: () => void;
   currentUser?: User | null;
   onLogout?: () => void;
   onOpenAdminConsole?: () => void;
   onOpenProfileModal?: () => void;
+  onOpenUpgradePlan?: () => void;
   toggleMobileSidebar?: () => void;
   notifications?: AppNotification[];
   onMarkAllNotificationsRead?: () => void;
@@ -54,10 +60,13 @@ export const Header: React.FC<HeaderProps> = ({
   openNewProductModal,
   language,
   setLanguage,
+  theme: propTheme,
+  toggleTheme: propToggleTheme,
   currentUser,
   onLogout,
   onOpenAdminConsole,
   onOpenProfileModal,
+  onOpenUpgradePlan,
   toggleMobileSidebar,
   notifications = [],
   onMarkAllNotificationsRead,
@@ -68,6 +77,32 @@ export const Header: React.FC<HeaderProps> = ({
   pendingOnlineOrdersCount = 0,
   onOpenIncomingOnlineOrders
 }) => {
+  const [localTheme, setLocalTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('minipos_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  });
+
+  const activeTheme = propTheme || localTheme;
+
+  const handleToggleTheme = () => {
+    if (propToggleTheme) {
+      propToggleTheme();
+    } else {
+      const next = activeTheme === 'light' ? 'dark' : 'light';
+      setLocalTheme(next);
+      if (next === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      localStorage.setItem('minipos_theme', next);
+    }
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -81,6 +116,8 @@ export const Header: React.FC<HeaderProps> = ({
   });
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const desktopSearchRef = useRef<HTMLDivElement>(null);
+  const mobileSearchRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -126,6 +163,12 @@ export const Header: React.FC<HeaderProps> = ({
       }
       if (notificationRef.current && !notificationRef.current.contains(e.target as Node)) {
         setShowNotifications(false);
+      }
+      if (
+        (!desktopSearchRef.current || !desktopSearchRef.current.contains(e.target as Node)) &&
+        (!mobileSearchRef.current || !mobileSearchRef.current.contains(e.target as Node))
+      ) {
+        setIsSearchOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -176,100 +219,102 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-white border-b border-slate-200/80 sticky top-0 z-30 px-3 sm:px-6 py-2.5 flex items-center justify-between shadow-2xs gap-2">
-      {/* Left Area: Logo & Search */}
-      <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-2xl min-w-0">
-        {/* Mobile menu trigger & Mobile Brand Logo */}
-        <div className="flex items-center gap-1 sm:gap-2 md:hidden shrink-0">
-          {toggleMobileSidebar && (
-            <button 
-              onClick={toggleMobileSidebar}
-              className="p-1.5 sm:p-2 rounded-xl text-slate-600 hover:bg-slate-100 active:bg-slate-200 cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
-              aria-label="Toggle Navigation Menu"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-          )}
-          <Logo size={32} variant="badge" />
-        </div>
-
-        {/* Global Search Bar */}
-        <div className="relative flex-1 min-w-0 max-w-xs sm:max-w-md">
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-slate-400 absolute left-2.5 sm:left-3 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              id="header-global-search"
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setIsSearchOpen(true);
-              }}
-              onFocus={() => setIsSearchOpen(true)}
-              placeholder={isKh ? "ស្វែងរកទំនិញ ឬលេខបាកូដ..." : "Search product or barcode..."}
-              className="w-full bg-slate-50 hover:bg-slate-100/80 focus:bg-white text-xs sm:text-sm text-slate-800 placeholder-slate-400 rounded-xl pl-7 sm:pl-9 pr-7 sm:pr-14 py-1.5 sm:py-2 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-            />
-            {searchQuery ? (
+    <header className="bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 sticky top-0 z-30 shadow-2xs transition-colors">
+      {/* Top Navbar Row */}
+      <div className="px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
+        {/* Left Area: Logo & Search */}
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-2xl min-w-0">
+          {/* Mobile menu trigger & Mobile Brand Logo */}
+          <div className="flex items-center gap-1 sm:gap-2 md:hidden shrink-0">
+            {toggleMobileSidebar && (
               <button 
-                onClick={() => { setSearchQuery(''); setIsSearchOpen(false); }}
-                className="absolute right-2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                onClick={toggleMobileSidebar}
+                className="p-1.5 sm:p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
+                aria-label="Toggle Navigation Menu"
               >
-                <X className="w-3.5 h-3.5" />
+                <Menu className="w-5 h-5" />
               </button>
-            ) : (
-              <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 bg-white border border-slate-200 rounded shadow-2xs">
-                Ctrl K
-              </kbd>
             )}
+            <Logo size={32} variant="badge" />
           </div>
 
-          {/* Search Results Dropdown */}
-          {isSearchOpen && searchResults.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-50 animate-in fade-in slide-in-from-top-2">
-              <div className="text-[11px] font-semibold text-slate-400 px-2.5 py-1 uppercase tracking-wider">
-                {isKh ? 'លទ្ធផលស្វែងរក' : 'Matching Products'}
-              </div>
-              <div className="space-y-1 max-h-64 overflow-y-auto touch-scroll">
-                {searchResults.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => {
-                      onSelectProduct(item);
-                      setSearchQuery('');
-                      setIsSearchOpen(false);
-                    }}
-                    className="flex items-center justify-between p-2 rounded-xl hover:bg-indigo-50/60 cursor-pointer group transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <img 
-                        src={item.image} 
-                        alt={item.name} 
-                        className="w-9 h-9 rounded-lg object-cover bg-slate-100 border border-slate-100 shrink-0" 
-                      />
-                      <div className="min-w-0">
-                        <div className="text-xs sm:text-sm font-semibold text-slate-800 group-hover:text-indigo-600 truncate">
-                          {item.name} {item.nameKh && <span className="text-xs font-normal text-slate-400">({item.nameKh})</span>}
-                        </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
-                          <span className="font-mono">#{item.barcode}</span>
-                          <span>•</span>
-                          <span>{item.category}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <div className="text-xs sm:text-sm font-bold text-slate-900">${item.price.toFixed(2)}</div>
-                      <div className={`text-[10px] sm:text-[11px] font-bold ${item.stock <= 5 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                        Stock: {item.stock}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Desktop Global Search Bar (Hidden on mobile, only visible on sm screens and up) */}
+          <div ref={desktopSearchRef} className="hidden sm:block relative flex-1 min-w-0 max-w-xs sm:max-w-md">
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-slate-400 absolute left-2.5 sm:left-3 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                id="header-global-search"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsSearchOpen(true);
+                }}
+                onFocus={() => setIsSearchOpen(true)}
+                placeholder={isKh ? "ស្វែងរកទំនិញ ឬលេខបាកូដ..." : "Search product or barcode..."}
+                className="w-full bg-slate-50 dark:bg-slate-800 hover:bg-slate-100/80 dark:hover:bg-slate-750 focus:bg-white dark:focus:bg-slate-800 text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 rounded-xl pl-7 sm:pl-9 pr-7 sm:pr-14 py-1.5 sm:py-2 border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              />
+              {searchQuery ? (
+                <button 
+                  onClick={() => { setSearchQuery(''); setIsSearchOpen(false); }}
+                  className="absolute right-2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 bg-white border border-slate-200 rounded shadow-2xs">
+                  Ctrl K
+                </kbd>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* Search Results Dropdown */}
+            {isSearchOpen && searchResults.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-50 animate-in fade-in slide-in-from-top-2">
+                <div className="text-[11px] font-semibold text-slate-400 px-2.5 py-1 uppercase tracking-wider">
+                  {isKh ? 'លទ្ធផលស្វែងរក' : 'Matching Products'}
+                </div>
+                <div className="space-y-1 max-h-64 overflow-y-auto touch-scroll">
+                  {searchResults.map((item) => (
+                    <div
+                      key={`desktop-search-${item.id}`}
+                      onClick={() => {
+                        onSelectProduct(item);
+                        setSearchQuery('');
+                        setIsSearchOpen(false);
+                      }}
+                      className="flex items-center justify-between p-2 rounded-xl hover:bg-indigo-50/60 cursor-pointer group transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img 
+                          src={item.image} 
+                          alt={item.name} 
+                          className="w-9 h-9 rounded-lg object-cover bg-slate-100 border border-slate-100 shrink-0" 
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs sm:text-sm font-semibold text-slate-800 group-hover:text-indigo-600 truncate">
+                            {item.name} {item.nameKh && <span className="text-xs font-normal text-slate-400">({item.nameKh})</span>}
+                          </div>
+                          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
+                            <span className="font-mono">#{item.barcode}</span>
+                            <span>•</span>
+                            <span>{item.category}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <div className="text-xs sm:text-sm font-bold text-slate-900">${item.price.toFixed(2)}</div>
+                        <div className={`text-[10px] sm:text-[11px] font-bold ${item.stock <= 5 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          Stock: {item.stock}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
         {/* Barcode Quick Action Button in Header */}
         <button
@@ -295,15 +340,31 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-2 sm:gap-3.5 shrink-0 ml-2">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 ml-auto sm:ml-2">
         {/* Language Switcher */}
         <button
+          id="header-language-toggle-btn"
           onClick={() => setLanguage(language === 'en' ? 'kh' : 'en')}
-          className="flex items-center gap-1 px-2 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer"
+          className="flex items-center gap-1 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 active:bg-slate-100 dark:active:bg-slate-700 transition-colors cursor-pointer"
           title="Toggle Language"
         >
-          <Globe className="w-3.5 h-3.5 text-slate-500" />
+          <Globe className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
           <span>{language === 'en' ? 'EN' : 'ខ្មែរ'}</span>
+        </button>
+
+        {/* Dark / Light Mode Toggle Button (Mobile & Desktop - placed between Language & Notifications) */}
+        <button
+          id="header-theme-toggle-btn"
+          onClick={handleToggleTheme}
+          className="p-1.5 sm:p-2 rounded-xl text-slate-600 dark:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all cursor-pointer flex items-center justify-center min-w-[34px] min-h-[34px] sm:min-w-[36px] sm:min-h-[36px] shadow-2xs"
+          title={activeTheme === 'dark' ? (isKh ? 'ប្ដូរទៅ Light Mode' : 'Switch to Light Mode') : (isKh ? 'ប្ដូរទៅ Dark Mode' : 'Switch to Dark Mode')}
+          aria-label="Toggle Dark/Light Mode"
+        >
+          {activeTheme === 'dark' ? (
+            <Sun className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-amber-400 fill-amber-400/20 hover:rotate-45 transition-transform" />
+          ) : (
+            <Moon className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-slate-600 dark:text-slate-300 fill-slate-100 hover:-rotate-12 transition-transform" />
+          )}
         </button>
 
         {/* Notifications Popover */}
@@ -314,13 +375,13 @@ export const Header: React.FC<HeaderProps> = ({
               setShowProfileMenu(false);
             }}
             id="header-notification-btn"
-            className="relative p-2 rounded-xl text-slate-600 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
+            className="relative p-1.5 sm:p-2 rounded-xl text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 transition-colors cursor-pointer min-w-[34px] min-h-[34px] sm:min-w-[36px] sm:min-h-[36px] flex items-center justify-center"
             aria-label="Notifications"
             title={isKh ? "ការជូនដំណឹង" : "Notifications"}
           >
-            <Bell className="w-5 h-5 text-slate-700" />
+            <Bell className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-slate-700 dark:text-slate-200" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white animate-pulse">
+              <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-pulse">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -536,6 +597,14 @@ export const Header: React.FC<HeaderProps> = ({
                     }`}>
                       {currentUser.role}
                     </span>
+                    <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-md flex items-center gap-0.5 ${
+                      currentUser.plan === 'lifetime' || currentUser.role === 'admin'
+                        ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}>
+                      <Crown className="w-2.5 h-2.5 text-amber-600" />
+                      <span>{currentUser.plan === 'lifetime' || currentUser.role === 'admin' ? 'VIP' : 'FREE'}</span>
+                    </span>
                   </div>
                 </div>
               </button>
@@ -552,13 +621,43 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="min-w-0 flex-1">
                       <div className="font-bold text-xs text-slate-900 truncate">{currentUser.fullName}</div>
                       <div className="text-[11px] text-slate-400 font-mono truncate">@{currentUser.username}</div>
-                      {currentUser.phone && (
-                        <div className="text-[10px] text-slate-500 truncate">{currentUser.phone}</div>
-                      )}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md ${
+                          currentUser.plan === 'lifetime' || currentUser.role === 'admin'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
+                          {currentUser.plan === 'lifetime' || currentUser.role === 'admin' ? '👑 Lifetime VIP' : 'Free (10 Items)'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
                   <div className="space-y-1">
+                    {/* Upgrade Plan Option in Dropdown */}
+                    {onOpenUpgradePlan && (
+                      <button
+                        id="dropdown-upgrade-plan-btn"
+                        onClick={() => {
+                          setShowProfileMenu(false);
+                          onOpenUpgradePlan();
+                        }}
+                        className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
+                          currentUser.plan === 'lifetime' || currentUser.role === 'admin'
+                            ? 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200'
+                            : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-xs'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Crown className="w-4 h-4 text-amber-300" />
+                          <span>{isKh ? 'Upgrade គម្រោង Lifetime' : 'Upgrade to Lifetime Plan'}</span>
+                        </div>
+                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/20">
+                          {currentUser.plan === 'lifetime' || currentUser.role === 'admin' ? (isKh ? 'សកម្ម' : 'Active') : '$19'}
+                        </span>
+                      </button>
+                    )}
+
                     {onOpenProfileModal && (
                       <button
                         id="dropdown-edit-profile-btn"
@@ -606,6 +705,82 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
         )}
+      </div>
+    </div>
+
+      {/* Mobile Search Bar Row (Directly below the top bar on mobile phone, exactly in the green box position) */}
+      <div ref={mobileSearchRef} className="sm:hidden px-3 pb-2.5 pt-0.5 w-full bg-white dark:bg-slate-900 transition-colors">
+        <div className="relative w-full">
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+            <input
+              id="header-mobile-search"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchOpen(true);
+              }}
+              onFocus={() => setIsSearchOpen(true)}
+              placeholder={isKh ? "ស្វែងរកទំនិញ ឬលេខបាកូដ..." : "Search product or barcode..."}
+              className="w-full bg-slate-50 dark:bg-slate-800 hover:bg-slate-100/80 dark:hover:bg-slate-750 focus:bg-white dark:focus:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 rounded-xl pl-9 pr-9 py-2 border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-2xs"
+            />
+            {searchQuery ? (
+              <button 
+                onClick={() => { setSearchQuery(''); setIsSearchOpen(false); }}
+                className="absolute right-2.5 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
+          </div>
+
+          {/* Mobile Search Results Dropdown */}
+          {isSearchOpen && searchResults.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 p-2 z-50 animate-in fade-in slide-in-from-top-2">
+              <div className="text-[11px] font-semibold text-slate-400 px-2.5 py-1 uppercase tracking-wider">
+                {isKh ? 'លទ្ធផលស្វែងរក' : 'Matching Products'}
+              </div>
+              <div className="space-y-1 max-h-64 overflow-y-auto touch-scroll">
+                {searchResults.map((item) => (
+                  <div
+                    key={`mobile-search-${item.id}`}
+                    onClick={() => {
+                      onSelectProduct(item);
+                      setSearchQuery('');
+                      setIsSearchOpen(false);
+                    }}
+                    className="flex items-center justify-between p-2 rounded-xl hover:bg-indigo-50/60 cursor-pointer group transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img 
+                        src={item.image} 
+                        alt={item.name} 
+                        className="w-9 h-9 rounded-lg object-cover bg-slate-100 border border-slate-100 shrink-0" 
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs sm:text-sm font-semibold text-slate-800 group-hover:text-indigo-600 truncate">
+                          {item.name} {item.nameKh && <span className="text-xs font-normal text-slate-400">({item.nameKh})</span>}
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
+                          <span className="font-mono">#{item.barcode}</span>
+                          <span>•</span>
+                          <span>{item.category}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <div className="text-xs sm:text-sm font-bold text-slate-900">${item.price.toFixed(2)}</div>
+                      <div className={`text-[10px] sm:text-[11px] font-bold ${item.stock <= 5 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        Stock: {item.stock}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

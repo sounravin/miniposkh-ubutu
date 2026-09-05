@@ -62,7 +62,7 @@ export const BarcodeLabelModal: React.FC<BarcodeLabelModalProps> = ({
 
         {/* Printable Barcode Label Card */}
         <div className="p-6 flex flex-col items-center justify-center space-y-3 bg-[#fafafa]">
-          <div className="bg-white p-4 rounded-2xl border-2 border-slate-800 shadow-sm flex flex-col items-center text-center w-full max-w-[260px]">
+          <div className="bg-white printable-paper p-4 rounded-2xl border-2 border-slate-800 shadow-sm flex flex-col items-center text-center w-full max-w-[260px]" data-preserve-white="true">
             <span className="text-xs font-bold text-slate-900 line-clamp-1">{product.name}</span>
             {product.nameKh && (
               <span className="text-[10px] text-slate-500 line-clamp-1">{product.nameKh}</span>

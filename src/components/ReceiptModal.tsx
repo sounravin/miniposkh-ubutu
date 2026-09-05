@@ -216,7 +216,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         {/* Printable Thermal Receipt Area */}
         <div 
           ref={receiptRef}
-          className="p-6 overflow-y-auto font-mono text-xs text-slate-800 space-y-4 bg-[#ffffff]" 
+          className="p-6 overflow-y-auto font-mono text-xs text-slate-800 space-y-4 bg-[#ffffff] printable-receipt" 
+          data-preserve-white="true"
           id="printable-receipt"
         >
           {/* Shop Header with Custom User Invoice Logo or Default Vector Logo */}

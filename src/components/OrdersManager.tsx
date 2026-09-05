@@ -19,6 +19,7 @@ import { formatUSD, formatKHR } from '../utils/currency';
 
 interface OrdersManagerProps {
   orders: Order[];
+  users?: any[];
   onViewReceipt: (order: Order) => void;
   onUpdateOrderStatus?: (orderId: string, status: Order['status']) => void;
   onDeleteOrder?: (orderId: string) => void;
@@ -29,6 +30,7 @@ interface OrdersManagerProps {
 
 export const OrdersManager: React.FC<OrdersManagerProps> = ({
   orders,
+  users = [],
   onViewReceipt,
   onUpdateOrderStatus,
   onDeleteOrder,
@@ -37,8 +39,10 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
   khrRate
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUserFilter, setSelectedUserFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'draft' | 'pending_online' | 'cancelled'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
 
   const isKh = language === 'kh';
 
@@ -68,6 +72,9 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
     return orders.filter(o => {
       const matchStatus = statusFilter === 'all' || o.status === statusFilter;
       const matchDate = isWithinDate(o.createdAt, dateFilter);
+      const matchUser = selectedUserFilter === 'all' || 
+        (selectedUserFilter === 'user-admin' ? (!o.userId || o.userId === 'user-admin') : o.userId === selectedUserFilter);
+
       const q = searchQuery.toLowerCase().trim();
       const matchSearch = q === '' ||
         o.orderNumber.toLowerCase().includes(q) ||
@@ -75,9 +82,9 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
         (o.tableNumber && o.tableNumber.toLowerCase().includes(q)) ||
         (o.cashierName && o.cashierName.toLowerCase().includes(q)) ||
         (o.paymentMethod && o.paymentMethod.toLowerCase().includes(q));
-      return matchStatus && matchDate && matchSearch;
+      return matchStatus && matchDate && matchUser && matchSearch;
     });
-  }, [orders, statusFilter, dateFilter, searchQuery]);
+  }, [orders, statusFilter, dateFilter, selectedUserFilter, searchQuery]);
 
   // Summary Metrics
   const completedList = filtered.filter(o => o.status === 'completed');
@@ -191,16 +198,33 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
         </div>
       </div>
 
-      {/* Search Input */}
-      <div className="relative">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={isKh ? "ស្វែងរកលេខវិក្កយបត្រ, ឈ្មោះអតិថិជន, លេខតុ, បេឡាករ, ឬវិធីទូទាត់..." : "Search order #, customer name, table, cashier, payment..."}
-          className="w-full bg-white text-xs sm:text-sm text-slate-800 placeholder-slate-400 rounded-xl pl-9 pr-4 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
+      {/* Search Input & User Filter */}
+      <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="relative flex-1 w-full">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={isKh ? "ស្វែងរកលេខវិក្កយបត្រ, ឈ្មោះអតិថិជន, លេខតុ, បេឡាករ, ឬវិធីទូទាត់..." : "Search order #, customer name, table, cashier, payment..."}
+            className="w-full bg-white text-xs sm:text-sm text-slate-800 placeholder-slate-400 rounded-xl pl-9 pr-4 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        {users && users.length > 0 && (
+          <select
+            value={selectedUserFilter}
+            onChange={(e) => setSelectedUserFilter(e.target.value)}
+            className="w-full sm:w-52 bg-white text-xs font-semibold text-slate-700 px-3.5 py-2.5 rounded-xl border border-indigo-200/80 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="all">{isKh ? '👥 គណនីទាំងអស់ (All Users)' : '👥 All User Accounts'}</option>
+            {users.map(u => (
+              <option key={u.id} value={u.id}>
+                👤 {u.fullName || u.username} (@{u.username})
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Orders Table */}
@@ -210,6 +234,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
             <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
               <tr>
                 <th className="py-3 px-4">Order No</th>
+                <th className="py-3 px-3">{isKh ? 'គណនីអ្នកលក់ (User)' : 'User / Cashier'}</th>
                 <th className="py-3 px-3">Date / Time</th>
                 <th className="py-3 px-3">Customer / Table</th>
                 <th className="py-3 px-3">Items Summary</th>
@@ -222,18 +247,28 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
+                  <td colSpan={9} className="py-12 text-center text-slate-400 text-xs">
                     {isKh ? 'មិនមានទិន្នន័យការកុម្ម៉ង់ដែលត្រូវគ្នានោះទេ' : 'No matching orders found.'}
                   </td>
                 </tr>
               ) : (
                 filtered.map((order) => {
                   const itemCount = order.items.reduce((s, i) => s + i.quantity, 0);
+                  const orderOwner = users.find(u => u.id === order.userId) || (order.userId === 'user-admin' || !order.userId ? { fullName: 'Admin', username: 'admin', role: 'admin' } : null);
 
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-slate-900">
                         {order.orderNumber}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold ${
+                          orderOwner?.role === 'admin' || order.userId === 'user-admin' || !order.userId
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        }`}>
+                          👤 {orderOwner ? `${orderOwner.fullName} (@${orderOwner.username})` : (order.cashierName || 'Admin')}
+                        </span>
                       </td>
                       <td className="py-3 px-3 font-mono text-slate-500 whitespace-nowrap">
                         <div>{new Date(order.createdAt).toLocaleDateString()}</div>
@@ -325,11 +360,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
                           {/* Delete order */}
                           {onDeleteOrder && (
                             <button
-                              onClick={() => {
-                                if (window.confirm(isKh ? 'តើអ្នកប្រាកដជាចង់លុបការកុម្ម៉ង់នេះមែនទេ?' : 'Are you sure you want to delete this order?')) {
-                                  onDeleteOrder(order.id);
-                                }
-                              }}
+                              onClick={() => setOrderToDelete(order)}
                               className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title={isKh ? 'លុបការកុម្ម៉ង់' : 'Delete order'}
                             >
@@ -346,6 +377,63 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Order Delete Confirmation Modal */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-xl shrink-0 border border-rose-100">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h4 className="text-base font-black text-slate-900">
+                  {isKh ? 'បញ្ជាក់ការលុបការកុម្ម៉ង់' : 'Confirm Delete Order'}
+                </h4>
+                <p className="text-xs text-slate-500">
+                  {isKh ? 'តើអ្នកប្រាកដជាចង់លុបវិក្កយបត្រនេះចេញពីប្រព័ន្ធមែនទេ?' : 'Are you sure you want to permanently delete this order?'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/80 space-y-1">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-medium">Order Number:</span>
+                <span className="font-mono font-bold text-slate-800">#{orderToDelete.orderNumber}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-medium">Total Amount:</span>
+                <span className="font-mono font-black text-rose-600">${orderToDelete.total.toFixed(2)} ({formatKHR(orderToDelete.total, khrRate)})</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-medium">Customer:</span>
+                <span className="text-slate-700 font-semibold">{orderToDelete.customerName || 'General Guest'}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setOrderToDelete(null)}
+                className="flex-1 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                {isKh ? 'បោះបង់ (Cancel)' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteOrder) onDeleteOrder(orderToDelete.id);
+                  setOrderToDelete(null);
+                }}
+                className="flex-1 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 rounded-xl shadow-md shadow-rose-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isKh ? 'លុបការកុម្ម៉ង់ (Delete)' : 'Delete Order'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

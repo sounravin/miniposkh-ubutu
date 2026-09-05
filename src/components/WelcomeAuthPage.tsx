@@ -71,32 +71,28 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
 
   // Local state for all available user accounts
   const [availableUsers, setAvailableUsers] = useState<User[]>(() => {
-    const cached = getCachedData<User[]>(LOCAL_STORAGE_KEYS.USERS, DEFAULT_USERS);
-    const map = new Map<string, User>();
-    for (const u of [...users, ...cached, ...DEFAULT_USERS]) {
-      map.set(u.id, u);
+    const list = users && users.length > 0 ? users : getCachedData<User[]>(LOCAL_STORAGE_KEYS.USERS, DEFAULT_USERS);
+    const merged = [...list];
+    for (const defUser of DEFAULT_USERS) {
+      if (!merged.some(u => u.id === defUser.id || u.username.toLowerCase() === defUser.username.toLowerCase())) {
+        merged.push(defUser);
+      }
     }
-    return Array.from(map.values());
+    return merged;
   });
 
-  // Direct real-time fetch from Firestore on mount
+  // Direct real-time fetch from server/database on mount
   useEffect(() => {
     let isMounted = true;
     const fetchDirectUsers = async () => {
       try {
         setFetchingUsers(true);
         const cloudUsers = await fetchAllUsersFromFirestoreDirectly();
-        if (isMounted && cloudUsers && cloudUsers.length > 0) {
-          setAvailableUsers(prev => {
-            const map = new Map<string, User>();
-            for (const u of [...cloudUsers, ...prev, ...users]) {
-              map.set(u.id, u);
-            }
-            return Array.from(map.values());
-          });
+        if (isMounted && Array.isArray(cloudUsers) && cloudUsers.length > 0) {
+          setAvailableUsers(cloudUsers);
         }
       } catch (err) {
-        console.warn('Initial cloud users fetch notice:', err);
+        console.warn('Initial users fetch notice:', err);
       } finally {
         if (isMounted) setFetchingUsers(false);
       }
@@ -106,7 +102,35 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (users && Array.isArray(users) && users.length > 0) {
+      const merged = [...users];
+      for (const defUser of DEFAULT_USERS) {
+        if (!merged.some(u => u.id === defUser.id || u.username.toLowerCase() === defUser.username.toLowerCase())) {
+          merged.push(defUser);
+        }
+      }
+      setAvailableUsers(merged);
+    }
   }, [users]);
+
+  useEffect(() => {
+    const handleUsersUpdated = (e: any) => {
+      if (e.detail && Array.isArray(e.detail) && e.detail.length > 0) {
+        const merged = [...e.detail];
+        for (const defUser of DEFAULT_USERS) {
+          if (!merged.some(u => u.id === defUser.id || u.username.toLowerCase() === defUser.username.toLowerCase())) {
+            merged.push(defUser);
+          }
+        }
+        setAvailableUsers(merged);
+      }
+    };
+    window.addEventListener('minipos:users_updated', handleUsersUpdated);
+    return () => window.removeEventListener('minipos:users_updated', handleUsersUpdated);
+  }, []);
 
   // Sign In Form State
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -149,7 +173,7 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
     }, 250);
   };
 
-  // Handle Sign In Submit with live Cloud lookup
+  // Handle Sign In Submit with live lookup
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -174,16 +198,22 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
         return;
       }
 
-      // 1. Search locally in availableUsers
+      // 1. Search across all memory sources & registered registries
       let candidateUsers = [...availableUsers, ...users, ...DEFAULT_USERS];
-      
+      try {
+        const backupUsers = JSON.parse(localStorage.getItem('minipos_all_registered_accounts') || '[]');
+        if (Array.isArray(backupUsers)) {
+          candidateUsers = [...candidateUsers, ...backupUsers];
+        }
+      } catch {}
+
       const matchUser = (u: User) => {
-        const uName = (u.username || '').toLowerCase();
+        const uName = (u.username || '').toLowerCase().trim();
         const uNameNoSpace = uName.replace(/\s+/g, '');
-        const uEmail = (u.email || '').toLowerCase();
+        const uEmail = (u.email || '').toLowerCase().trim();
         const uPhone = (u.phone || '').replace(/\D/g, '');
-        const uFullName = (u.fullName || '').toLowerCase();
-        const uId = (u.id || '').toLowerCase();
+        const uFullName = (u.fullName || '').toLowerCase().trim();
+        const uId = (u.id || '').toLowerCase().trim();
 
         return (
           uName === cleanIdent ||
@@ -197,17 +227,17 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
 
       let foundUser = candidateUsers.find(matchUser);
 
-      // 2. If not found in memory, query Firestore directly in real-time
+      // 2. If not found in memory, query server directly in real-time
       if (!foundUser) {
         try {
           const freshCloudUsers = await fetchAllUsersFromFirestoreDirectly();
           if (freshCloudUsers && freshCloudUsers.length > 0) {
             setAvailableUsers(freshCloudUsers);
             candidateUsers = [...freshCloudUsers, ...candidateUsers];
-            foundUser = freshCloudUsers.find(matchUser);
+            foundUser = candidateUsers.find(matchUser);
           }
         } catch (fErr) {
-          console.warn('Live Firestore user search notice:', fErr);
+          console.warn('Live server user search notice:', fErr);
         }
       }
 
@@ -228,18 +258,19 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
         return;
       }
 
-      // 3. Password Verification
-      const expectedPassword = (foundUser.password || (foundUser.username === 'admin' ? 'admin' : '123')).trim();
+      // 3. Password Verification (Support custom password, default 'admin' for admin, and default '123' for staff)
+      const expectedPassword = (foundUser.password || (foundUser.username.toLowerCase() === 'admin' ? 'admin' : '123')).trim();
       const isPasswordValid = 
         cleanPass === expectedPassword || 
+        cleanPass === (foundUser.password || '').trim() ||
         (cleanPass === '123' && (!foundUser.password || foundUser.password === '123')) ||
         (foundUser.role === 'admin' && (cleanPass === 'admin' || cleanPass === expectedPassword));
 
       if (!isPasswordValid) {
         setErrorMessage(
           isKh 
-            ? 'ពាក្យសម្ងាត់មិនត្រឹមត្រូវទេ! សូមពិនិត្យពាក្យសម្ងាត់របស់អ្នកឡើងវិញ។' 
-            : 'Incorrect password! Please check your password and try again.'
+            ? 'ពាក្យសម្ងាត់មិនត្រឹមត្រូវទេ! សូមពិនិត្យពាក្យសម្ងាត់របស់អ្នកឡើងវិញ (ពាក្យសម្ងាត់លំនាំដើម: 123 ឬ admin)។' 
+            : 'Incorrect password! Please check your password (Default password: 123 or admin).'
         );
         setLoading(false);
         return;
@@ -663,7 +694,7 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
           )}
 
           <p className="text-[10px] text-center text-slate-400 mt-3.5">
-            {isKh ? 'ទិន្នន័យត្រូវបានការពារ និងរក្សាទុកលើ Firestore Cloud' : 'Secured with Cloud Firestore Sync'}
+            {isKh ? 'ទិន្នន័យត្រូវបានរក្សាទុកលើ Local Database & Server ដោយសុវត្ថិភាព' : 'Secured with Local Database & Self-Hosted Server Engine'}
           </p>
         </div>
       </div>
@@ -719,16 +750,16 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
 
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-tight">
               {isKh ? (
-                <>គ្រប់គ្រងការលក់ ស្តុកទំនិញ និងចំណូល <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400">តាម Cloud Real-Time</span></>
+                <>គ្រប់គ្រងការលក់ ស្តុកទំនិញ និងចំណូល <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400">ប្រព័ន្ធ Local & Ubuntu Server</span></>
               ) : (
-                <>Smart Point of Sale & Inventory <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400">Powered by Firestore Cloud</span></>
+                <>Smart Point of Sale & Inventory <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400">Self-Hosted Server Ready</span></>
               )}
             </h2>
 
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-2xl">
               {isKh 
-                ? 'សូមស្វាគមន៍មកកាន់ MINI MART POS! ងាយស្រួល ឆាប់រហ័ស គាំទ្រការស្កេនបាកូដ ការទូទាត់ KHQR និងការគ្រប់គ្រងគណនីសមាជិកដាច់ដោយឡែកពីគ្នា។' 
-                : 'Welcome to MINI MART POS! Fast, responsive POS with barcode scanner, live KHQR payment, camera upload from iPhone, and isolated multi-member cloud workspaces.'}
+                ? 'សូមស្វាគមន៍មកកាន់ MINI MART POS! ដំណើរការលឿន គាំទ្រការស្កេនបាកូដ ការទូទាត់ KHQR មិនពឹងផ្អែកលើ Cloud ខាងក្រៅ និងអាចដាក់លើ Server Ubuntu ផ្ទាល់ខ្លួនបាន។' 
+                : 'Welcome to MINI MART POS! Fast, responsive POS with barcode scanner, live KHQR payment, offline-ready, and 100% compatible with self-hosted Ubuntu servers.'}
             </p>
 
             {/* System Key Feature Badges */}
@@ -738,10 +769,10 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
                   <Cloud className="w-4 h-4" />
                 </div>
                 <div className="text-xs font-bold text-white mb-0.5">
-                  {isKh ? 'Real-Time Cloud' : 'Cloud Sync'}
+                  {isKh ? 'Local & Server Engine' : 'Self-Hosted Server'}
                 </div>
                 <div className="text-[11px] text-slate-300">
-                  {isKh ? 'Sync ទិន្នន័យលើ Firestore' : 'Live Firestore integration'}
+                  {isKh ? 'ដំណើរការលើ Ubuntu & Offline' : 'Runs on Ubuntu & Offline'}
                 </div>
               </div>
 
@@ -1075,7 +1106,7 @@ export const WelcomeAuthPage: React.FC<WelcomeAuthPageProps> = ({
               )}
 
               <p className="text-[11px] text-center text-slate-400 mt-4">
-                {isKh ? 'ទិន្នន័យទាំងអស់ត្រូវបានការពារ និងរក្សាទុកលើ Firestore Cloud' : 'All accounts synced securely via Google Cloud Firestore.'}
+                {isKh ? 'ទិន្នន័យទាំងអស់ត្រូវបានរក្សាទុកលើ Local Database & Ubuntu Server ដោយសុវត្ថិភាព' : 'All accounts stored securely with local & self-hosted server persistence.'}
               </p>
             </div>
           </div>

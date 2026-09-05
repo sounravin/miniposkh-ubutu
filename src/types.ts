@@ -57,6 +57,7 @@ export interface Expense {
   date: string;
   paidBy: string;
   notes?: string;
+  note?: string;
 }
 
 export interface Customer {
@@ -85,8 +86,10 @@ export interface ShopSettings {
   shopNameKh: string;
   address: string;
   phone: string;
+  email?: string;
   taxRate: number; // e.g. 0.08 for 8%
   currencySymbol: string;
+  currency?: string;
   khrExchangeRate: number; // e.g. 4100
   enableSound: boolean;
   receiptFooterText: string;
@@ -97,10 +100,43 @@ export interface ShopSettings {
   khqrAccountName?: string; // Account Holder Name (e.g. SOUN RAVIN)
   khqrAccountNumber?: string; // Bank Account No. / Bakong ID (e.g. 001 234 567 ABA)
   khqrBankName?: string; // Bank Name (e.g. ABA Bank, ACLEDA, Bakong, Wing)
+  // Admin KHQR Settings for Membership Plan Upgrades
+  adminUpgradeKhqr?: AdminUpgradeKhqrSettings;
+}
+
+export interface AdminUpgradeKhqrSettings {
+  khqrImage?: string;
+  bankName?: string;
+  accountName?: string;
+  accountNumber?: string;
+  merchantName?: string;
+  upgradePrice?: number;
+  telegramUsername?: string;
+  instructionsKh?: string;
+  instructionsEn?: string;
 }
 
 export type UserRole = 'admin' | 'cashier' | 'manager';
 export type UserStatus = 'active' | 'pending' | 'disabled';
+export type UserPlan = 'free' | 'lifetime';
+
+export interface UpgradeRequest {
+  id: string;
+  userId: string;
+  username: string;
+  fullName: string;
+  phone?: string;
+  currentPlan: UserPlan;
+  targetPlan: 'lifetime';
+  amount: number; // e.g. $19 or $29 USD
+  paymentSlipImage: string; // Base64 proof of KHQR payment
+  senderNote?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  adminNote?: string;
+  createdAt: string; // ISO string
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
 
 export interface User {
   id: string;
@@ -111,6 +147,7 @@ export interface User {
   phone?: string;
   role: UserRole;
   status: UserStatus;
+  plan?: UserPlan; // 'free' (limit 10 items) or 'lifetime' (unlimited items)
   avatar?: string;
   createdAt: string;
   lastLogin?: string;
@@ -144,6 +181,7 @@ export type ActiveView =
   | 'products' 
   | 'orders' 
   | 'income_reports' 
+  | 'member_breakdown'
   | 'expenses' 
   | 'tables' 
   | 'customers' 
@@ -160,6 +198,22 @@ export interface AppNotification {
   read: boolean;
   timestamp: string; // ISO string
   linkView?: ActiveView;
+}
+
+export interface ActiveSession {
+  sessionId: string;
+  userId: string;
+  username: string;
+  fullName: string;
+  role: UserRole | string;
+  avatar?: string;
+  device: string;
+  deviceType: 'mobile' | 'desktop' | 'tablet';
+  ip: string;
+  activeView: string;
+  loginTime: string;
+  lastSeen: number;
+  isOnline?: boolean;
 }
 
 

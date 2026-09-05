@@ -18,11 +18,14 @@ import {
   CreditCard,
   Building2,
   ExternalLink,
-  MessageCircle
+  MessageCircle,
+  Crown
 } from 'lucide-react';
 import { ShopSettings, User } from '../types';
 import { sounds } from '../utils/audio';
 import { Logo } from './Logo';
+import { uploadImageToServer } from '../lib/firestoreService';
+import { resizeImageFile } from '../lib/imageUtils';
 
 interface SettingsManagerProps {
   settings: ShopSettings;
@@ -33,6 +36,7 @@ interface SettingsManagerProps {
   onLogout?: () => void;
   onOpenProfileModal?: () => void;
   onOpenA2HSGuide?: () => void;
+  onOpenUpgradePlan?: () => void;
 }
 
 export const SettingsManager: React.FC<SettingsManagerProps> = ({
@@ -43,7 +47,8 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
   currentUser,
   onLogout,
   onOpenProfileModal,
-  onOpenA2HSGuide
+  onOpenA2HSGuide,
+  onOpenUpgradePlan
 }) => {
   const isKh = language === 'kh';
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,22 +62,21 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
     });
   };
 
-  const handleKhqrImageUpload = (file: File) => {
+  const handleKhqrImageUpload = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       alert(isKh ? 'សូមជ្រើសរើសឯកសាររូបភាពប៉ុណ្ណោះ (PNG, JPG, WebP)!' : 'Please select an image file (PNG, JPG, WebP)!');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64Data = e.target?.result as string;
-      if (base64Data) {
-        handleChange('khqrImage', base64Data);
-        setSaveSuccessNotice(true);
-        setTimeout(() => setSaveSuccessNotice(false), 2500);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const resized = await resizeImageFile(file, 800, 800, 0.85);
+      const serverUrl = await uploadImageToServer(resized.dataUrl, 'khqr');
+      handleChange('khqrImage', serverUrl || resized.dataUrl);
+      setSaveSuccessNotice(true);
+      setTimeout(() => setSaveSuccessNotice(false), 2500);
+    } catch (err: any) {
+      alert(isKh ? 'បរាជ័យក្នុងការ Upload KHQR: ' + err.message : 'Failed to upload KHQR: ' + err.message);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -524,7 +528,17 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
                 className="w-12 h-12 rounded-full object-cover ring-2 ring-indigo-200" 
               />
               <div>
-                <div className="font-bold text-sm text-slate-900">{currentUser.fullName}</div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-slate-900">{currentUser.fullName}</span>
+                  <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black uppercase flex items-center gap-1 ${
+                    currentUser.plan === 'lifetime' || currentUser.role === 'admin'
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    <Crown className="w-3 h-3 text-amber-600" />
+                    <span>{currentUser.plan === 'lifetime' || currentUser.role === 'admin' ? 'Lifetime VIP' : 'Free (10 Items)'}</span>
+                  </span>
+                </div>
                 <div className="text-xs text-slate-500 font-mono">@{currentUser.username}</div>
                 {currentUser.phone && (
                   <div className="text-[11px] text-slate-400 mt-0.5">{currentUser.phone}</div>
@@ -533,6 +547,26 @@ export const SettingsManager: React.FC<SettingsManagerProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {onOpenUpgradePlan && (
+                <button
+                  type="button"
+                  id="settings-upgrade-plan-btn"
+                  onClick={onOpenUpgradePlan}
+                  className={`flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black transition-all shadow-xs cursor-pointer ${
+                    currentUser.plan === 'lifetime' || currentUser.role === 'admin'
+                      ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+                      : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-amber-500/20'
+                  }`}
+                >
+                  <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
+                  <span>
+                    {currentUser.plan === 'lifetime' || currentUser.role === 'admin'
+                      ? (isKh ? 'ពិនិត្យគម្រោង Lifetime' : 'View Lifetime Plan')
+                      : (isKh ? 'Upgrade គម្រោង Lifetime ($19)' : 'Upgrade Lifetime ($19)')}
+                  </span>
+                </button>
+              )}
+
               {onOpenProfileModal && (
                 <button
                   type="button"

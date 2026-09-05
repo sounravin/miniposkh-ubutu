@@ -301,7 +301,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <div className="p-3.5 sm:p-5 bg-gradient-to-br from-rose-50/60 via-slate-50 to-white rounded-2xl border border-rose-100/90 space-y-4 animate-in fade-in">
               <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-5">
                 {/* QR Code Container with Zoom Action */}
-                <div className="relative group p-2.5 bg-white rounded-2xl border border-rose-200 shadow-sm shrink-0 flex flex-col items-center">
+                <div className="relative group p-2.5 bg-white rounded-2xl border border-rose-200 shadow-sm shrink-0 flex flex-col items-center" data-preserve-white="true">
                   <img
                     src={displayQrSrc}
                     alt="KHQR Code"
@@ -455,7 +455,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <img
               src={displayQrSrc}
               alt="Enlarged KHQR"
-              className="w-64 h-64 mx-auto object-contain rounded-2xl border border-slate-200"
+              data-preserve-white="true"
+              className="w-64 h-64 mx-auto object-contain rounded-2xl border border-slate-200 bg-white p-2"
             />
 
             <div>

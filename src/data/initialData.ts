@@ -15,6 +15,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   // 1. Skin Care & Cosmetics
   {
     id: 'prod-sk-1',
+    userId: 'user-admin',
     name: 'CeraVe Hydrating Facial Cleanser 237ml',
     nameKh: 'ហ្វូមលាងមុខ សេរ៉ាវី ផ្តល់សំណើម',
     category: 'Skin Care',
@@ -29,6 +30,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-sk-2',
+    userId: 'user-admin',
     name: 'La Roche-Posay Anthelios SPF50+ Sunscreen',
     nameKh: 'ឡេការពារកម្ដៅថ្ងៃ រ៉ូសផូសេ SPF50+',
     category: 'Skin Care',
@@ -43,6 +45,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-sk-3',
+    userId: 'user-admin',
     name: 'COSRX Advanced Snail 96 Mucin Power Essence',
     nameKh: 'សេរ៉ូមខ្យងកូរ៉េ COSRX ចិញ្ចឹមស្បែក',
     category: 'Skin Care',
@@ -57,6 +60,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-sk-4',
+    userId: 'user-admin',
     name: 'Anua Heartleaf 77% Soothing Toner 250ml',
     nameKh: 'ទឹកជូតមុខផ្កា Anua បន្ធូរបន្ថយស្បែក',
     category: 'Skin Care',
@@ -71,6 +75,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-sk-5',
+    userId: 'user-admin',
     name: 'Laneige Lip Sleeping Mask Berry 20g',
     nameKh: 'ម៉ាស់បបូរមាត់ Laneige ផ្លែប៊ឺរី',
     category: 'Skin Care',
@@ -87,6 +92,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   // 2. Wines, Spirits & Liquors
   {
     id: 'prod-wn-1',
+    userId: 'user-admin',
     name: 'Cabernet Sauvignon Red Wine 750ml',
     nameKh: 'ស្រាក្រហម កាប៊ែរណេ សូវីញ៉ុង ៧៥០មល',
     category: 'Wines & Liquors',
@@ -101,6 +107,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-wn-2',
+    userId: 'user-admin',
     name: 'Chardonnay Reserve White Wine 750ml',
     nameKh: 'ស្រាស សាដូណេ ៧៥០មល',
     category: 'Wines & Liquors',
@@ -115,6 +122,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-wn-3',
+    userId: 'user-admin',
     name: 'Johnnie Walker Black Label 12Y 700ml',
     nameKh: 'ស្រាវីស្គី Johnnie Walker Black Label',
     category: 'Wines & Liquors',
@@ -129,6 +137,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-wn-4',
+    userId: 'user-admin',
     name: 'Hennessy V.S Cognac 700ml',
     nameKh: 'ស្រាកូញាក់ ហិនណេសស៊ី V.S',
     category: 'Wines & Liquors',
@@ -143,6 +152,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-wn-5',
+    userId: 'user-admin',
     name: 'Heineken Premium Beer (Pack 6 Cans)',
     nameKh: 'ស្រាបៀរ ហាយនីគែន ៦កំប៉ុង',
     category: 'Wines & Liquors',
@@ -159,6 +169,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   // 3. Food, Groceries & Staples
   {
     id: 'prod-fd-1',
+    userId: 'user-admin',
     name: 'Premium Jasmine Fragrant Rice 5kg',
     nameKh: 'អង្ករផ្កាម្លិះប្រណិតលេខ១ ៥គីឡូ',
     category: 'Food & Groceries',
@@ -173,6 +184,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-fd-2',
+    userId: 'user-admin',
     name: 'Extra Virgin Olive Oil 500ml',
     nameKh: 'ប្រេងអូលីវសុទ្ធសម្រាប់សុខភាព ៥០០មល',
     category: 'Food & Groceries',
@@ -187,6 +199,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-fd-3',
+    userId: 'user-admin',
     name: 'Nongshim Shin Ramyun Noodles (Pack 5)',
     nameKh: 'មីកូរ៉េ ស៊ីនរ៉ាមយ៉ុង ហឹរឈ្ងុយ ៥កញ្ចប់',
     category: 'Food & Groceries',
@@ -201,6 +214,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-fd-4',
+    userId: 'user-admin',
     name: 'Solid Albacore Tuna in Olive Oil 185g',
     nameKh: 'ត្រីធូណាកំប៉ុងក្នុងប្រេងអូលីវ ១៨៥ក្រាម',
     category: 'Food & Groceries',
@@ -217,6 +231,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   // 4. Beverages & Drinks
   {
     id: 'prod-bv-1',
+    userId: 'user-admin',
     name: 'San Pellegrino Sparkling Water 750ml',
     nameKh: 'ទឹកបរិសុទ្ធហ្គាស San Pellegrino ៧៥០មល',
     category: 'Beverages',
@@ -231,6 +246,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-bv-2',
+    userId: 'user-admin',
     name: 'Uji Japanese Ceremonial Matcha 50g',
     nameKh: 'ម្សៅតែបៃតង ម៉ាតឆា ជប៉ុនសុទ្ធ ៥០ក្រាម',
     category: 'Beverages',
@@ -245,6 +261,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-bv-3',
+    userId: 'user-admin',
     name: 'Arabica Whole Bean Roasted Coffee 500g',
     nameKh: 'គ្រាប់កាហ្វេអារ៉ាប៊ីកា លីងឈ្ងុយ ៥០០ក្រាម',
     category: 'Beverages',
@@ -259,6 +276,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-bv-4',
+    userId: 'user-admin',
     name: 'Freshly Squeezed Valencia Orange Juice 1L',
     nameKh: 'ទឹកក្រូចច្របាច់ស្រស់ ១០០% ១លីត្រ',
     category: 'Beverages',
@@ -275,6 +293,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   // 5. Snacks & Confectionery
   {
     id: 'prod-sn-1',
+    userId: 'user-admin',
     name: 'Belgian 70% Dark Chocolate Bar 100g',
     nameKh: 'សូកូឡាខ្មៅ បែលហ្ស៊ិក ៧០% ១០០ក្រាម',
     category: 'Snacks',
@@ -289,6 +308,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-sn-2',
+    userId: 'user-admin',
     name: 'Pringles Sour Cream & Onion 158g',
     nameKh: 'ដំឡូងបំពង ព្រីងហ្គល រសជាតិខ្ទឹមស',
     category: 'Snacks',
@@ -303,6 +323,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-sn-3',
+    userId: 'user-admin',
     name: 'Roasted Cashew Nuts Sea Salt 250g',
     nameKh: 'គ្រាប់ស្វាយចន្ទីខ្មែរ លីងអំបិល ២៥០ក្រាម',
     category: 'Snacks',
@@ -319,6 +340,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   // 6. Personal Care & Hygiene
   {
     id: 'prod-pc-1',
+    userId: 'user-admin',
     name: 'Moroccanoil Hydrating Shampoo 250ml',
     nameKh: 'សាប៊ូកក់សក់ Moroccanoil ផ្តល់សំណើម',
     category: 'Personal Care',
@@ -333,6 +355,7 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-pc-2',
+    userId: 'user-admin',
     name: 'Sensodyne Rapid Relief Toothpaste 100g',
     nameKh: 'ថ្នាំដុសធ្មេញ សេនសូឌីន ការពារស្រៀវធ្មេញ',
     category: 'Personal Care',
@@ -361,6 +384,7 @@ export const INITIAL_TABLES: TableInfo[] = [
 export const INITIAL_CUSTOMERS: Customer[] = [
   {
     id: 'cust-1',
+    userId: 'user-admin',
     name: 'Sophea Chan',
     phone: '012 345 678',
     email: 'sophea.chan@example.com',
@@ -371,6 +395,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
   },
   {
     id: 'cust-2',
+    userId: 'user-admin',
     name: 'Dara Vong',
     phone: '098 765 432',
     email: 'dara.vong@example.com',
@@ -381,6 +406,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
   },
   {
     id: 'cust-3',
+    userId: 'user-admin',
     name: 'Bopha Pich',
     phone: '085 112 233',
     email: 'bopha@example.com',
@@ -391,6 +417,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
   },
   {
     id: 'cust-4',
+    userId: 'user-admin',
     name: 'MD Atikur Rhaman',
     phone: '077 889 900',
     email: 'atikur@example.com',
@@ -404,6 +431,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
 export const INITIAL_ORDERS: Order[] = [
   {
     id: 'ord-1001',
+    userId: 'user-admin',
     orderNumber: 'ORD-1001',
     items: [
       { product: INITIAL_PRODUCTS[0], quantity: 1 }, // CeraVe Cleanser $14.50
@@ -430,6 +458,7 @@ export const INITIAL_ORDERS: Order[] = [
   },
   {
     id: 'ord-1002',
+    userId: 'user-admin',
     orderNumber: 'ORD-1002',
     items: [
       { product: INITIAL_PRODUCTS[7], quantity: 1 }, // Johnnie Walker Black $38.00
@@ -455,6 +484,7 @@ export const INITIAL_ORDERS: Order[] = [
   },
   {
     id: 'ord-1003',
+    userId: 'user-admin',
     orderNumber: 'ORD-1003',
     items: [
       { product: INITIAL_PRODUCTS[10], quantity: 1 }, // Jasmine Rice 5kg $6.50
@@ -483,6 +513,7 @@ export const INITIAL_ORDERS: Order[] = [
 export const INITIAL_EXPENSES: Expense[] = [
   {
     id: 'exp-1',
+    userId: 'user-admin',
     title: 'Korean Cosmetics & Skin Care Restock',
     category: 'Stock Purchase',
     amount: 320.00,
@@ -492,6 +523,7 @@ export const INITIAL_EXPENSES: Expense[] = [
   },
   {
     id: 'exp-2',
+    userId: 'user-admin',
     title: 'French Wine & Spirits Distributor Wholesale',
     category: 'Stock Purchase',
     amount: 450.00,
@@ -501,6 +533,7 @@ export const INITIAL_EXPENSES: Expense[] = [
   },
   {
     id: 'exp-3',
+    userId: 'user-admin',
     title: 'Store Electricity & Air Conditioning Bill',
     category: 'Utilities',
     amount: 135.00,
@@ -510,6 +543,7 @@ export const INITIAL_EXPENSES: Expense[] = [
   },
   {
     id: 'exp-4',
+    userId: 'user-admin',
     title: 'Packaging Bags & Thermal Receipt Paper Rolls',
     category: 'Maintenance',
     amount: 42.00,

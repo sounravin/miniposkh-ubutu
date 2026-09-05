@@ -10,7 +10,8 @@ import {
   ActiveView,
   User,
   ActivityLog,
-  AppNotification
+  AppNotification,
+  ActiveSession
 } from './types';
 import { 
   INITIAL_PRODUCTS, 
@@ -43,6 +44,7 @@ import { CustomerCatalogView } from './components/CustomerCatalogView';
 import { CustomerMenuShareModal } from './components/CustomerMenuShareModal';
 import { IncomingOnlineOrdersDrawer } from './components/IncomingOnlineOrdersDrawer';
 import { AddToHomeScreenGuideModal } from './components/AddToHomeScreenGuideModal';
+import { UpgradePlanModal } from './components/UpgradePlanModal';
 import { Share2 } from 'lucide-react';
 import {
   initializeFirestoreDatabase,
@@ -74,7 +76,11 @@ import {
   syncAllLocalDataToFirestore,
   isSyncDue,
   incrementPendingChanges,
-  getLastSyncTime
+  getLastSyncTime,
+  sendSessionHeartbeat,
+  fetchActiveSessionsFromServer,
+  logoutSessionOnServer,
+  getOrCreateSessionId
 } from './lib/firestoreService';
 
 export default function App() {
@@ -89,13 +95,20 @@ export default function App() {
   });
 
   const [users, setUsers] = useState<User[]>(() => {
-    return getCachedData(LOCAL_STORAGE_KEYS.USERS, DEFAULT_USERS);
+    const cached = getCachedData<User[]>(LOCAL_STORAGE_KEYS.USERS, DEFAULT_USERS);
+    const merged = [...cached];
+    for (const defU of DEFAULT_USERS) {
+      if (!merged.some(u => u.id === defU.id || u.username.toLowerCase() === defU.username.toLowerCase())) {
+        merged.push(defU);
+      }
+    }
+    return merged;
   });
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
   // 1. Local-First Caching State with Periodic & Manual Cloud Synchronization
   const [products, setProducts] = useState<Product[]>(() => {
-    return getCachedData(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    return getCachedData(LOCAL_STORAGE_KEYS.PRODUCTS, []);
   });
   const [orders, setOrders] = useState<Order[]>(() => {
     return getCachedData(LOCAL_STORAGE_KEYS.ORDERS, INITIAL_ORDERS);
@@ -113,10 +126,10 @@ export default function App() {
     return getCachedData(LOCAL_STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
   });
 
-  // Filter products, orders, expenses by user account (Multi-user Strict Data Isolation)
+  // Store Products, Orders, Expenses available for POS and Inventory - STRICT USER ISOLATION
   const userProducts = React.useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.id === 'user-admin' || currentUser.username === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.id === 'user-admin') {
       return products.filter(p => !p.userId || p.userId === 'user-admin' || p.userId === currentUser.id);
     }
     return products.filter(p => p.userId === currentUser.id);
@@ -124,7 +137,7 @@ export default function App() {
 
   const userOrders = React.useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.id === 'user-admin' || currentUser.username === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.id === 'user-admin') {
       return orders.filter(o => !o.userId || o.userId === 'user-admin' || o.userId === currentUser.id);
     }
     return orders.filter(o => o.userId === currentUser.id);
@@ -132,7 +145,7 @@ export default function App() {
 
   const userExpenses = React.useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.id === 'user-admin' || currentUser.username === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.id === 'user-admin') {
       return expenses.filter(e => !e.userId || e.userId === 'user-admin' || e.userId === currentUser.id);
     }
     return expenses.filter(e => e.userId === currentUser.id);
@@ -140,7 +153,7 @@ export default function App() {
 
   const userCustomers = React.useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.id === 'user-admin' || currentUser.username === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.id === 'user-admin') {
       return customers.filter(c => !c.userId || c.userId === 'user-admin' || c.userId === currentUser.id);
     }
     return customers.filter(c => c.userId === currentUser.id);
@@ -152,7 +165,30 @@ export default function App() {
   const [language, setLanguage] = useState<'en' | 'kh'>(() => {
     return (localStorage.getItem('minipos_lang') as 'en' | 'kh') || 'kh';
   });
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('minipos_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('minipos_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+  };
+
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
 
   // 2.1 Notifications Management Engine
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
@@ -260,42 +296,105 @@ export default function App() {
       try {
         const cloudData = await fetchAllCloudData();
         if (cloudData) {
-          if (cloudData.products && cloudData.products.length > 0) setProducts(cloudData.products);
-          if (cloudData.orders && cloudData.orders.length > 0) setOrders(cloudData.orders);
-          if (cloudData.expenses && cloudData.expenses.length > 0) setExpenses(cloudData.expenses);
-          if (cloudData.customers && cloudData.customers.length > 0) setCustomers(cloudData.customers);
-          if (cloudData.tables && cloudData.tables.length > 0) setTables(cloudData.tables);
-          if (cloudData.users && cloudData.users.length > 0) setUsers(cloudData.users);
+          if (Array.isArray(cloudData.products)) setProducts(cloudData.products);
+          if (Array.isArray(cloudData.orders)) setOrders(cloudData.orders);
+          if (Array.isArray(cloudData.expenses)) setExpenses(cloudData.expenses);
+          if (Array.isArray(cloudData.customers)) setCustomers(cloudData.customers);
+          if (Array.isArray(cloudData.tables)) setTables(cloudData.tables);
+          if (Array.isArray(cloudData.users)) setUsers(cloudData.users);
           if (cloudData.settings) setSettings(cloudData.settings);
         }
-
-        // Auto-Sync if 2-3 days have elapsed
-        if (isSyncDue(3)) {
-          console.log('⏰ 3-Day Periodic Auto-Sync Triggered...');
-          await syncAllLocalDataToFirestore({
-            products,
-            orders,
-            expenses,
-            customers,
-            tables,
-            users,
-            settings
-          });
-        }
       } catch (err) {
-        console.warn('Initial cloud sync warning:', err);
+        console.warn('Initial server sync warning:', err);
       }
     };
 
     doInitialSync();
 
+    // Multi-device live sync: periodic check (every 5 seconds) & on window focus so iPhone and PC stay synced
+    let lastSyncedUpdatedAt = '';
+    const pollServerUpdates = async () => {
+      try {
+        if (typeof window !== 'undefined' && window.fetch) {
+          const res = await fetch('/api/db');
+          if (res.ok) {
+            const json = await res.json();
+            if (json?.data) {
+              const d = json.data;
+              if (d.updatedAt && d.updatedAt !== lastSyncedUpdatedAt) {
+                lastSyncedUpdatedAt = d.updatedAt;
+                if (d.products && Array.isArray(d.products)) {
+                  setProducts(d.products);
+                  setCachedData(LOCAL_STORAGE_KEYS.PRODUCTS, d.products);
+                }
+                if (d.orders && Array.isArray(d.orders)) {
+                  setOrders(d.orders);
+                  setCachedData(LOCAL_STORAGE_KEYS.ORDERS, d.orders);
+                }
+                if (d.expenses && Array.isArray(d.expenses)) {
+                  setExpenses(d.expenses);
+                  setCachedData(LOCAL_STORAGE_KEYS.EXPENSES, d.expenses);
+                }
+                if (d.customers && Array.isArray(d.customers)) {
+                  setCustomers(d.customers);
+                  setCachedData(LOCAL_STORAGE_KEYS.CUSTOMERS, d.customers);
+                }
+                if (d.tables && Array.isArray(d.tables)) {
+                  setTables(d.tables);
+                  setCachedData(LOCAL_STORAGE_KEYS.TABLES, d.tables);
+                }
+                if (d.users && Array.isArray(d.users)) {
+                  const mergedUsers = [...d.users];
+                  for (const defU of DEFAULT_USERS) {
+                    if (!mergedUsers.some(u => u.id === defU.id || u.username.toLowerCase() === defU.username.toLowerCase())) {
+                      mergedUsers.push(defU);
+                    }
+                  }
+                  setUsers(mergedUsers);
+                  setCachedData(LOCAL_STORAGE_KEYS.USERS, mergedUsers);
+                }
+                if (d.settings) {
+                  setSettings(d.settings);
+                  setCachedData(LOCAL_STORAGE_KEYS.SETTINGS, d.settings);
+                }
+                if (d.logs && Array.isArray(d.logs)) {
+                  setActivityLogs(d.logs);
+                  setCachedData(LOCAL_STORAGE_KEYS.LOGS, d.logs);
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore offline network errors
+      }
+    };
+
+    const syncInterval = setInterval(pollServerUpdates, 5000);
+    const handleWindowFocus = () => {
+      pollServerUpdates();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
     // Lightweight live subscribers for users, logs, and shop settings
     const unsubUsers = subscribeToUsers((cloudUsers) => {
-      if (cloudUsers && cloudUsers.length > 0) {
+      if (Array.isArray(cloudUsers) && cloudUsers.length > 0) {
         setUsers(cloudUsers);
-        setCachedData(LOCAL_STORAGE_KEYS.USERS, cloudUsers);
       }
     });
+
+    const handleUsersUpdated = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setUsers(e.detail);
+      }
+    };
+    const handleProductsUpdated = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setProducts(e.detail);
+      }
+    };
+    window.addEventListener('minipos:users_updated', handleUsersUpdated);
+    window.addEventListener('minipos:products_updated', handleProductsUpdated);
 
     const unsubLogs = subscribeToActivityLogs((cloudLogs) => {
       setActivityLogs(cloudLogs);
@@ -309,6 +408,10 @@ export default function App() {
     });
 
     return () => {
+      clearInterval(syncInterval);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('minipos:users_updated', handleUsersUpdated);
+      window.removeEventListener('minipos:products_updated', handleProductsUpdated);
       unsubUsers();
       unsubLogs();
       unsubSettings();
@@ -325,6 +428,65 @@ export default function App() {
     }
   }, [language]);
 
+  // Active Sessions Live Presence & New User Login Notifications on Ubuntu Server
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let knownSessionIds = new Set<string>();
+
+    const executeHeartbeatAndPoll = async () => {
+      try {
+        // 1. Send heartbeat for this client
+        await sendSessionHeartbeat(currentUser, activeView);
+
+        // 2. Fetch all live active sessions on Ubuntu Server
+        const sessions = await fetchActiveSessionsFromServer();
+        if (sessions && Array.isArray(sessions)) {
+          setActiveSessions(sessions);
+
+          // 3. If Admin/Manager, notify when a new user logs in from any device
+          if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+            const mySessionId = getOrCreateSessionId();
+            for (const s of sessions) {
+              if (s.sessionId !== mySessionId && !knownSessionIds.has(s.sessionId)) {
+                knownSessionIds.add(s.sessionId);
+                
+                // Only alert if login is fresh (less than 35s ago)
+                const loginAge = Date.now() - new Date(s.loginTime).getTime();
+                if (loginAge < 35000) {
+                  addNotification({
+                    title: language === 'kh' ? `🟢 ឧបករណ៍ថ្មីបាន Login លើ Server` : `🟢 User Logged In on Server`,
+                    desc: language === 'kh'
+                      ? `${s.fullName} (@${s.username}) បានភ្ជាប់ពី ${s.device} (IP: ${s.ip})`
+                      : `${s.fullName} (@${s.username}) connected from ${s.device} (IP: ${s.ip})`,
+                    type: 'info',
+                    category: 'system',
+                    linkView: 'admin_console'
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Safe ignore
+      }
+    };
+
+    executeHeartbeatAndPoll();
+    const heartbeatInterval = setInterval(executeHeartbeatAndPoll, 6000);
+
+    const handleFocus = () => {
+      executeHeartbeatAndPoll();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [currentUser, activeView, language]);
+
   // Auth login handler: fetches latest dataset from Cloud and caches in Local Storage
   const handleLoginSuccess = async (user: User, isNewRegistration = false) => {
     setCurrentUser(user);
@@ -335,6 +497,9 @@ export default function App() {
     setOrderNote('');
     setCustomerName('');
     setActiveView('pos');
+
+    // Register active session immediately on server
+    sendSessionHeartbeat(user, 'pos', true).catch(() => {});
 
     // Trigger Add to Home Screen guide ONLY ONCE when registering for the first time
     if (isNewRegistration) {
@@ -350,24 +515,13 @@ export default function App() {
     try {
       const cloudData = await fetchAllCloudData();
       if (cloudData) {
-        if (cloudData.products && cloudData.products.length > 0) setProducts(cloudData.products);
-        if (cloudData.orders && cloudData.orders.length > 0) setOrders(cloudData.orders);
-        if (cloudData.expenses && cloudData.expenses.length > 0) setExpenses(cloudData.expenses);
-        if (cloudData.customers && cloudData.customers.length > 0) setCustomers(cloudData.customers);
-        if (cloudData.tables && cloudData.tables.length > 0) setTables(cloudData.tables);
-        if (cloudData.users && cloudData.users.length > 0) setUsers(cloudData.users);
+        if (Array.isArray(cloudData.products)) setProducts(cloudData.products);
+        if (Array.isArray(cloudData.orders)) setOrders(cloudData.orders);
+        if (Array.isArray(cloudData.expenses)) setExpenses(cloudData.expenses);
+        if (Array.isArray(cloudData.customers)) setCustomers(cloudData.customers);
+        if (Array.isArray(cloudData.tables)) setTables(cloudData.tables);
+        if (Array.isArray(cloudData.users)) setUsers(cloudData.users);
         if (cloudData.settings) setSettings(cloudData.settings);
-      }
-      if (isSyncDue(3)) {
-        await syncAllLocalDataToFirestore({
-          products: cloudData?.products || products,
-          orders: cloudData?.orders || orders,
-          expenses: cloudData?.expenses || expenses,
-          customers: cloudData?.customers || customers,
-          tables: cloudData?.tables || tables,
-          users: cloudData?.users || users,
-          settings: cloudData?.settings || settings
-        });
       }
     } catch (err) {
       console.warn('Post-login cloud fetch skipped:', err);
@@ -377,6 +531,7 @@ export default function App() {
   // Auth logout handler
   const handleLogout = () => {
     if (currentUser) {
+      logoutSessionOnServer(currentUser).catch(() => {});
       logUserActivity(
         currentUser.id,
         currentUser.username,
@@ -398,6 +553,7 @@ export default function App() {
   const [discountType, setDiscountType] = useState<'fixed' | 'percent'>('fixed');
   const [orderNote, setOrderNote] = useState<string>('');
   const [customerName, setCustomerName] = useState<string>('');
+  const [activeLoadedOnlineOrderId, setActiveLoadedOnlineOrderId] = useState<string | null>(null);
 
   // 4. Modals State
   const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
@@ -408,6 +564,7 @@ export default function App() {
   const [isCustomerMenuShareOpen, setIsCustomerMenuShareOpen] = useState(false);
   const [isIncomingOrdersDrawerOpen, setIsIncomingOrdersDrawerOpen] = useState(false);
   const [isA2HSGuideOpen, setIsA2HSGuideOpen] = useState(false);
+  const [isUpgradePlanModalOpen, setIsUpgradePlanModalOpen] = useState(false);
 
   // BroadcastChannel listener for real-time customer online orders
   useEffect(() => {
@@ -454,6 +611,7 @@ export default function App() {
     if (order.note) setOrderNote(order.note);
     if (typeof order.discount === 'number') setDiscount(order.discount);
     if (order.discountType) setDiscountType(order.discountType);
+    setActiveLoadedOnlineOrderId(order.id);
     setActiveView('pos');
     setIsMobileCartOpen(true);
     sounds.playSuccessChime();
@@ -513,6 +671,7 @@ export default function App() {
     setDiscount(0);
     setOrderNote('');
     setCustomerName('');
+    setActiveLoadedOnlineOrderId(null);
   };
 
   // Barcode scanned callback
@@ -524,15 +683,22 @@ export default function App() {
   const handleOrderCompleted = async (newOrder: Order) => {
     const orderWithUser: Order = {
       ...newOrder,
+      id: activeLoadedOnlineOrderId || newOrder.id,
       userId: currentUser?.id || 'user-admin'
     };
     
-    // 1. Immediately update Orders state & local cache
+    // 1. Immediately update Orders state & local cache (replacing previous pending online order)
     setOrders(prev => {
-      const updated = [orderWithUser, ...prev.filter(o => o.id !== orderWithUser.id)];
+      const filtered = prev.filter(o => o.id !== orderWithUser.id && o.id !== activeLoadedOnlineOrderId);
+      const updated = [orderWithUser, ...filtered];
       setCachedData(LOCAL_STORAGE_KEYS.ORDERS, updated);
       return updated;
     });
+
+    if (activeLoadedOnlineOrderId && activeLoadedOnlineOrderId !== orderWithUser.id) {
+      deleteOrderFromFirestore(activeLoadedOnlineOrderId).catch(() => {});
+    }
+    setActiveLoadedOnlineOrderId(null);
 
     // 2. Immediately decrement product stock in local state & cache
     setProducts(prev => {
@@ -678,7 +844,7 @@ export default function App() {
   const handleAddProduct = async (newProd: Product) => {
     const prodWithUser: Product = {
       ...newProd,
-      userId: currentUser?.id || 'user-admin',
+      userId: newProd.userId || currentUser?.id || 'user-admin',
       createdAt: newProd.createdAt || new Date().toISOString()
     };
     
@@ -690,11 +856,16 @@ export default function App() {
     });
     incrementPendingChanges();
 
+    // Persist to server directly
+    saveProductToFirestore(prodWithUser).catch((err) => {
+      console.warn('Background product save to server:', err);
+    });
+
     addNotification({
       title: language === 'kh' ? `✨ បានបន្ថែមទំនិញ៖ ${prodWithUser.name}` : `✨ Product Added: ${prodWithUser.name}`,
       desc: language === 'kh' 
-        ? `បានបញ្ចូលទៅក្នុងស្តុកចំនួន ${prodWithUser.stock} (តម្លៃ ${prodWithUser.price.toFixed(2)})`
-        : `Added to inventory with ${prodWithUser.stock} in stock (Price ${prodWithUser.price.toFixed(2)})`,
+        ? `បានបញ្ចូលទៅក្នុងស្តុកចំនួន ${prodWithUser.stock} (តម្លៃ $${prodWithUser.price.toFixed(2)})`
+        : `Added to inventory with ${prodWithUser.stock} in stock (Price $${prodWithUser.price.toFixed(2)})`,
       type: 'info',
       category: 'stock',
       linkView: 'products'
@@ -719,6 +890,11 @@ export default function App() {
     });
     incrementPendingChanges();
 
+    // Persist to server directly
+    saveProductToFirestore(prodWithUser).catch((err) => {
+      console.warn('Background product update to server:', err);
+    });
+
     if (currentUser) {
       logUserActivity(currentUser.id, currentUser.username, currentUser.role, 'UPDATE_PRODUCT', `Updated product "${prodWithUser.name}"`).catch(() => {});
     }
@@ -735,6 +911,11 @@ export default function App() {
     });
     incrementPendingChanges();
 
+    // Delete from server directly
+    deleteProductFromFirestore(productId).catch((err) => {
+      console.warn('Background product deletion from server:', err);
+    });
+
     if (currentUser && target) {
       logUserActivity(currentUser.id, currentUser.username, currentUser.role, 'DELETE_PRODUCT', `Deleted product "${target.name}"`).catch(() => {});
     }
@@ -744,7 +925,7 @@ export default function App() {
   const handleAddExpense = async (expense: Expense) => {
     const expWithUser: Expense = {
       ...expense,
-      userId: currentUser?.id || 'user-admin'
+      userId: expense.userId || currentUser?.id || 'user-admin'
     };
 
     setExpenses(prev => {
@@ -753,12 +934,17 @@ export default function App() {
       return next;
     });
     incrementPendingChanges();
+
+    // Persist to server directly
+    saveExpenseToFirestore(expWithUser).catch((err) => {
+      console.warn('Background expense save to server:', err);
+    });
     
     addNotification({
       title: language === 'kh' ? `💸 ចំណាយថ្មី៖ ${expense.title}` : `💸 New Expense: ${expense.title}`,
       desc: language === 'kh'
-        ? `បានកត់ត្រាចំណាយទឹកប្រាក់ ${expense.amount.toFixed(2)} (${expense.category})`
-        : `Recorded expense of ${expense.amount.toFixed(2)} (${expense.category})`,
+        ? `បានកត់ត្រាចំណាយទឹកប្រាក់ $${expense.amount.toFixed(2)} (${expense.category})`
+        : `Recorded expense of $${expense.amount.toFixed(2)} (${expense.category})`,
       type: 'info',
       category: 'expense',
       linkView: 'expenses'
@@ -776,13 +962,14 @@ export default function App() {
       return next;
     });
     incrementPendingChanges();
+    deleteExpenseFromFirestore(expenseId).catch(() => {});
   };
 
   // Customer CRUD with Local-First Caching
   const handleAddCustomer = async (customer: Customer) => {
     const custWithUser: Customer = {
       ...customer,
-      userId: currentUser?.id || 'user-admin'
+      userId: customer.userId || currentUser?.id || 'user-admin'
     };
 
     setCustomers(prev => {
@@ -791,10 +978,21 @@ export default function App() {
       return next;
     });
     incrementPendingChanges();
+    saveCustomerToFirestore(custWithUser).catch(() => {});
 
     if (currentUser) {
       logUserActivity(currentUser.id, currentUser.username, currentUser.role, 'ADD_CUSTOMER', `Registered customer "${customer.name}"`).catch(() => {});
     }
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    setCustomers(prev => {
+      const next = prev.filter(c => c.id !== customerId);
+      setCachedData(LOCAL_STORAGE_KEYS.CUSTOMERS, next);
+      return next;
+    });
+    incrementPendingChanges();
+    deleteCustomerFromFirestore(customerId).catch(() => {});
   };
 
   // Order Status update
@@ -877,12 +1075,12 @@ export default function App() {
   const handleFetchLatestFromCloud = async () => {
     const cloudData = await fetchAllCloudData();
     if (cloudData) {
-      if (cloudData.products && cloudData.products.length > 0) setProducts(cloudData.products);
-      if (cloudData.orders && cloudData.orders.length > 0) setOrders(cloudData.orders);
-      if (cloudData.expenses && cloudData.expenses.length > 0) setExpenses(cloudData.expenses);
-      if (cloudData.customers && cloudData.customers.length > 0) setCustomers(cloudData.customers);
-      if (cloudData.tables && cloudData.tables.length > 0) setTables(cloudData.tables);
-      if (cloudData.users && cloudData.users.length > 0) setUsers(cloudData.users);
+      if (Array.isArray(cloudData.products)) setProducts(cloudData.products);
+      if (Array.isArray(cloudData.orders)) setOrders(cloudData.orders);
+      if (Array.isArray(cloudData.expenses)) setExpenses(cloudData.expenses);
+      if (Array.isArray(cloudData.customers)) setCustomers(cloudData.customers);
+      if (Array.isArray(cloudData.tables)) setTables(cloudData.tables);
+      if (Array.isArray(cloudData.users)) setUsers(cloudData.users);
       if (cloudData.settings) setSettings(cloudData.settings);
     }
   };
@@ -965,6 +1163,7 @@ export default function App() {
           currentUser={currentUser}
           users={users}
           activityLogs={activityLogs}
+          activeSessions={activeSessions}
           language={language}
           onNavigateToPos={() => setActiveView('pos')}
           onLogout={handleLogout}
@@ -1000,7 +1199,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f5f6fa] flex text-slate-800 font-sans selection:bg-indigo-500 selection:text-white relative">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f5f6fa] dark:bg-slate-950 flex text-slate-800 dark:text-slate-100 font-sans selection:bg-indigo-500 selection:text-white relative transition-colors">
       {/* 1. Left Sidebar Navigation */}
       <div className={`fixed inset-y-0 left-0 z-40 md:relative md:z-auto transition-all duration-200 ${
         mobileSidebarOpen 
@@ -1025,6 +1224,7 @@ export default function App() {
           onOpenCustomerMenuShare={() => setIsCustomerMenuShareOpen(true)}
           onOpenIncomingOnlineOrders={() => setIsIncomingOrdersDrawerOpen(true)}
           onOpenA2HSGuide={() => setIsA2HSGuideOpen(true)}
+          onOpenUpgradePlan={() => setIsUpgradePlanModalOpen(true)}
         />
       </div>
 
@@ -1037,7 +1237,7 @@ export default function App() {
       )}
 
       {/* 2. Main Content Area */}
-      <div className="flex-1 flex flex-col w-full min-w-0 max-w-full h-screen overflow-y-auto overflow-x-hidden touch-scroll">
+      <div className="flex-1 flex flex-col w-full min-w-0 max-w-full h-screen overflow-y-auto overflow-x-hidden touch-scroll bg-[#f5f6fa] dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
         {/* Top Header */}
         <Header
           products={userProducts}
@@ -1049,10 +1249,13 @@ export default function App() {
           openNewProductModal={() => setActiveView('products')}
           language={language}
           setLanguage={setLanguage}
+          theme={theme}
+          toggleTheme={toggleTheme}
           currentUser={currentUser}
           onLogout={handleLogout}
           onOpenAdminConsole={() => setActiveView('admin_console')}
           onOpenProfileModal={() => setIsProfileModalOpen(true)}
+          onOpenUpgradePlan={() => setIsUpgradePlanModalOpen(true)}
           toggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           notifications={notifications}
           onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
@@ -1187,29 +1390,37 @@ export default function App() {
 
           {activeView === 'products' && (
             <ProductsManager
-              products={userProducts}
+              products={currentUser.role === 'admin' ? products : userProducts}
+              users={users}
               onAddProduct={handleAddProduct}
               onUpdateProduct={handleUpdateProduct}
               onDeleteProduct={handleDeleteProduct}
               onAddExpense={handleAddExpense}
               language={language}
               khrRate={settings.khrExchangeRate}
+              currentUser={currentUser}
+              onOpenUpgradePlan={() => setIsUpgradePlanModalOpen(true)}
             />
           )}
 
-          {activeView === 'income_reports' && (
+          {(activeView === 'income_reports' || activeView === 'member_breakdown') && (
             <IncomeReports
-              orders={userOrders}
-              expenses={userExpenses}
-              products={userProducts}
+              orders={currentUser.role === 'admin' ? orders : userOrders}
+              expenses={currentUser.role === 'admin' ? expenses : userExpenses}
+              products={currentUser.role === 'admin' ? products : userProducts}
+              users={users}
+              currentUser={currentUser}
+              allProducts={products}
+              allOrders={orders}
               language={language}
               khrRate={settings.khrExchangeRate}
+              initialTab={activeView === 'member_breakdown' ? 'member_breakdown' : 'overview'}
             />
           )}
 
           {activeView === 'expenses' && (
             <ExpensesManager
-              expenses={userExpenses}
+              expenses={currentUser.role === 'admin' ? expenses : userExpenses}
               onAddExpense={handleAddExpense}
               onDeleteExpense={handleDeleteExpense}
               language={language}
@@ -1219,7 +1430,8 @@ export default function App() {
 
           {activeView === 'orders' && (
             <OrdersManager
-              orders={userOrders}
+              orders={currentUser.role === 'admin' ? orders : userOrders}
+              users={users}
               onViewReceipt={(ord) => setActiveReceiptOrder(ord)}
               onUpdateOrderStatus={handleUpdateOrderStatus}
               onDeleteOrder={handleDeleteOrder}
@@ -1256,6 +1468,27 @@ export default function App() {
               onLogout={handleLogout}
               onOpenProfileModal={() => setIsProfileModalOpen(true)}
               onOpenA2HSGuide={() => setIsA2HSGuideOpen(true)}
+              onOpenUpgradePlan={() => setIsUpgradePlanModalOpen(true)}
+            />
+          )}
+
+          {activeView === 'admin_console' && currentUser && (
+            <AdminConsole
+              currentUser={currentUser}
+              users={users}
+              activityLogs={activityLogs}
+              language={language}
+              onNavigateToPos={() => setActiveView('pos')}
+              onLogout={handleLogout}
+              onUpdateCurrentUser={handleUpdateCurrentUser}
+              products={products}
+              orders={orders}
+              expenses={expenses}
+              customers={customers}
+              tables={tables}
+              settings={settings}
+              onFetchLatestFromCloud={handleFetchLatestFromCloud}
+              onSyncAllToCloud={handleSyncAllToCloud}
             />
           )}
         </main>
@@ -1294,6 +1527,7 @@ export default function App() {
           currentUser={currentUser}
           onUpdateUser={handleUpdateCurrentUser}
           onUserUpdated={handleUpdateCurrentUser}
+          onOpenUpgradePlan={() => setIsUpgradePlanModalOpen(true)}
           language={language}
         />
       )}
@@ -1350,6 +1584,21 @@ export default function App() {
         userName={currentUser?.fullName}
         userId={currentUser?.id}
       />
+
+      {/* Upgrade Plan Modal */}
+      {isUpgradePlanModalOpen && currentUser && (
+        <UpgradePlanModal
+          isOpen={isUpgradePlanModalOpen}
+          onClose={() => setIsUpgradePlanModalOpen(false)}
+          currentUser={currentUser}
+          language={language}
+          settings={settings}
+          userProductCount={userProducts.length}
+          onUpgradeSuccess={() => {
+            // refresh data
+          }}
+        />
+      )}
     </div>
   );
 }

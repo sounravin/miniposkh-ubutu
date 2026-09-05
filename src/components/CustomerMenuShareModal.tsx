@@ -243,7 +243,7 @@ export const CustomerMenuShareModal: React.FC<CustomerMenuShareModalProps> = ({
 
           {/* Main QR Card */}
           <div className="p-3.5 sm:p-4 bg-slate-50 rounded-2xl sm:rounded-3xl border border-slate-200/80 flex flex-col sm:flex-row items-center gap-3.5 sm:gap-4 text-center sm:text-left">
-            <div className="bg-white p-2.5 sm:p-3 rounded-2xl shadow-xs border border-slate-200/70 shrink-0">
+            <div className="bg-white p-2.5 sm:p-3 rounded-2xl shadow-xs border border-slate-200/70 shrink-0" data-preserve-white="true">
               {qrDataUrl ? (
                 <img
                   src={qrDataUrl}
