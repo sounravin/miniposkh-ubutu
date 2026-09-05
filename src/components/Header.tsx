@@ -22,7 +22,8 @@ import {
   ArrowRight,
   Crown,
   Moon,
-  Sun
+  Sun,
+  Tv
 } from 'lucide-react';
 import { Product, User, AppNotification, ActiveView } from '../types';
 import { Logo } from './Logo';
@@ -33,6 +34,7 @@ interface HeaderProps {
   onSelectProduct: (product: Product) => void;
   openBarcodeScanner: () => void;
   openNewProductModal: () => void;
+  onOpenCustomerDisplay?: () => void;
   language: 'en' | 'kh';
   setLanguage: (lang: 'en' | 'kh') => void;
   theme?: 'light' | 'dark';
@@ -58,6 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectProduct,
   openBarcodeScanner,
   openNewProductModal,
+  onOpenCustomerDisplay,
   language,
   setLanguage,
   theme: propTheme,
@@ -332,11 +335,27 @@ export const Header: React.FC<HeaderProps> = ({
           id="header-add-product-btn"
           onClick={openNewProductModal}
           title={isKh ? "បន្ថែមទំនិញថ្មី" : "Add New Product"}
-          className="hidden lg:flex items-center gap-1 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 transition-colors cursor-pointer shrink-0"
+          className="hidden lg:flex items-center gap-1 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>{isKh ? "ថែមទំនិញ" : "Add Product"}</span>
         </button>
+
+        {/* Customer Facing Display Screen Button (Option for customer to view checkout & payment) */}
+        {onOpenCustomerDisplay && (
+          <button
+            id="header-customer-display-btn"
+            type="button"
+            onClick={onOpenCustomerDisplay}
+            title={isKh ? "ផ្ទាំងអេក្រង់អតិថិជន (Customer Display / Checkout)" : "Customer Display Screen (Checkout & Payment)"}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 active:bg-emerald-200 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-all cursor-pointer shrink-0 shadow-2xs group"
+          >
+            <Tv className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline font-bold">
+              {isKh ? "អេក្រង់អតិថិជន" : "Customer Screen"}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Right Controls */}

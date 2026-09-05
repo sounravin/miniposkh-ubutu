@@ -12,7 +12,8 @@ import {
   User,
   ShoppingBag,
   RotateCcw,
-  Barcode
+  Barcode,
+  Tv
 } from 'lucide-react';
 import { CartItem, TableInfo } from '../types';
 import { formatUSD, formatKHR } from '../utils/currency';
@@ -36,6 +37,7 @@ interface CartDrawerProps {
   orderNote: string;
   setOrderNote: (note: string) => void;
   onOpenPayment: () => void;
+  onOpenCustomerDisplay?: () => void;
   onSaveDraft: () => void;
   language: 'en' | 'kh';
   khrRate: number;
@@ -63,6 +65,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   orderNote,
   setOrderNote,
   onOpenPayment,
+  onOpenCustomerDisplay,
   onSaveDraft,
   language,
   khrRate,
@@ -355,6 +358,18 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               <span>{isKh ? `គិតលុយ $${total.toFixed(2)}` : `Charge $${total.toFixed(2)}`}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
+
+            {onOpenCustomerDisplay && (
+              <button
+                id="cart-customer-display-btn"
+                type="button"
+                onClick={onOpenCustomerDisplay}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 border-emerald-200 transition-all cursor-pointer active:scale-[0.99]"
+              >
+                <Tv className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{isKh ? 'បង្ហាញអេក្រង់អតិថិជន (Customer Screen)' : 'Customer Display Screen'}</span>
+              </button>
+            )}
 
             <button
               id="cart-save-draft-btn"

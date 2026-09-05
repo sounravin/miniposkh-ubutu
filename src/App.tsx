@@ -29,6 +29,7 @@ import { PosView } from './components/PosView';
 import { CartDrawer } from './components/CartDrawer';
 import { BarcodeScannerModal } from './components/BarcodeScannerModal';
 import { PaymentModal } from './components/PaymentModal';
+import { CustomerDisplayModal } from './components/CustomerDisplayModal';
 import { ReceiptModal } from './components/ReceiptModal';
 import { ProductsManager } from './components/ProductsManager';
 import { IncomeReports } from './components/IncomeReports';
@@ -558,6 +559,7 @@ export default function App() {
   // 4. Modals State
   const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isCustomerDisplayOpen, setIsCustomerDisplayOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [activeReceiptOrder, setActiveReceiptOrder] = useState<Order | null>(null);
@@ -1247,6 +1249,7 @@ export default function App() {
           }}
           openBarcodeScanner={() => setIsBarcodeScannerOpen(true)}
           openNewProductModal={() => setActiveView('products')}
+          onOpenCustomerDisplay={() => setIsCustomerDisplayOpen(true)}
           language={language}
           setLanguage={setLanguage}
           theme={theme}
@@ -1310,6 +1313,7 @@ export default function App() {
                   orderNote={orderNote}
                   setOrderNote={setOrderNote}
                   onOpenPayment={() => setIsPaymentModalOpen(true)}
+                  onOpenCustomerDisplay={() => setIsCustomerDisplayOpen(true)}
                   onSaveDraft={handleSaveDraft}
                   language={language}
                   khrRate={settings.khrExchangeRate}
@@ -1561,6 +1565,30 @@ export default function App() {
           khrRate={settings.khrExchangeRate}
           language={language}
           onOrderCompleted={handleOrderCompleted}
+          settings={settings}
+          currentUser={currentUser}
+          onOpenCustomerDisplay={() => setIsCustomerDisplayOpen(true)}
+        />
+      )}
+
+      {/* Customer Facing Display Screen Modal (Option for customer to view checkout & payment) */}
+      {isCustomerDisplayOpen && (
+        <CustomerDisplayModal
+          isOpen={isCustomerDisplayOpen}
+          onClose={() => setIsCustomerDisplayOpen(false)}
+          cartItems={cartItems}
+          subtotal={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)}
+          discount={discount}
+          discountType={discountType}
+          tax={Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) * settings.taxRate}
+          taxRate={settings.taxRate}
+          total={Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) + (Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) * settings.taxRate)}
+          selectedTable={selectedTable}
+          customerName={customerName}
+          orderNote={orderNote}
+          cashierName={currentUser?.fullName || cashierName}
+          khrRate={settings.khrExchangeRate}
+          language={language}
           settings={settings}
           currentUser={currentUser}
         />

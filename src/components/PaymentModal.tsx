@@ -13,7 +13,8 @@ import {
   Copy,
   Check,
   Building2,
-  UserCheck
+  UserCheck,
+  Tv
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CartItem, PaymentMethod, Order, ShopSettings, User } from '../types';
@@ -39,6 +40,7 @@ interface PaymentModalProps {
   onOrderCompleted: (order: Order) => void;
   settings?: ShopSettings;
   currentUser?: User | null;
+  onOpenCustomerDisplay?: () => void;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -59,7 +61,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   language,
   onOrderCompleted,
   settings,
-  currentUser
+  currentUser,
+  onOpenCustomerDisplay
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('cash');
   const [cashTendered, setCashTendered] = useState<string>(total.toFixed(2));
@@ -172,12 +175,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </p>
           </div>
 
-          <div className="text-right">
-            <div className="text-xl sm:text-2xl font-black text-white font-mono">
-              {formatUSD(total)}
-            </div>
-            <div className="text-[11px] sm:text-xs text-indigo-300 font-mono">
-              {formatKHR(total, khrRate)}
+          <div className="flex items-center gap-3">
+            {onOpenCustomerDisplay && (
+              <button
+                type="button"
+                onClick={onOpenCustomerDisplay}
+                title={isKh ? "បើកផ្ទាំងអេក្រង់អតិថិជន (Customer Display)" : "Open Customer Display Screen"}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <Tv className="w-3.5 h-3.5" />
+                <span>{isKh ? 'អេក្រង់អតិថិជន' : 'Customer Screen'}</span>
+              </button>
+            )}
+
+            <div className="text-right">
+              <div className="text-xl sm:text-2xl font-black text-white font-mono">
+                {formatUSD(total)}
+              </div>
+              <div className="text-[11px] sm:text-xs text-indigo-300 font-mono">
+                {formatKHR(total, khrRate)}
+              </div>
             </div>
           </div>
         </div>
