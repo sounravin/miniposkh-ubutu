@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Banknote, 
@@ -41,6 +41,7 @@ interface PaymentModalProps {
   settings?: ShopSettings;
   currentUser?: User | null;
   onOpenCustomerDisplay?: () => void;
+  onPaymentMethodChange?: (method: PaymentMethod, cashTendered?: number, changeUSD?: number, changeKHR?: number) => void;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -62,7 +63,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onOrderCompleted,
   settings,
   currentUser,
-  onOpenCustomerDisplay
+  onOpenCustomerDisplay,
+  onPaymentMethodChange
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('cash');
   const [cashTendered, setCashTendered] = useState<string>(total.toFixed(2));
@@ -72,12 +74,20 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const isKh = language === 'kh';
 
-  if (!isOpen) return null;
-
+  // Calculate change due
   const totalKhr = Math.round(total * khrRate);
   const numericTendered = parseFloat(cashTendered) || 0;
   const changeDue = Math.max(0, numericTendered - total);
   const changeDueKhr = Math.round(changeDue * khrRate);
+
+  // Sync selected payment method with customer display screen
+  useEffect(() => {
+    if (isOpen && onPaymentMethodChange) {
+      onPaymentMethodChange(selectedMethod, numericTendered, changeDue, changeDueKhr);
+    }
+  }, [isOpen, selectedMethod, numericTendered, changeDue, changeDueKhr, onPaymentMethodChange]);
+
+  if (!isOpen) return null;
 
   // Determine KHQR configuration for current shop / user
   const khqrImg = settings?.khqrImage || currentUser?.khqrImage || '';

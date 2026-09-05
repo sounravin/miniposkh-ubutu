@@ -44,6 +44,10 @@ interface CustomerDisplayModalProps {
   language: 'en' | 'kh';
   settings?: ShopSettings;
   currentUser?: User | null;
+  selectedPaymentMethod?: PaymentMethod | null;
+  cashTendered?: number;
+  changeUSD?: number;
+  changeKHR?: number;
 }
 
 export const CustomerDisplayModal: React.FC<CustomerDisplayModalProps> = ({
@@ -63,13 +67,18 @@ export const CustomerDisplayModal: React.FC<CustomerDisplayModalProps> = ({
   khrRate,
   language: initialLanguage,
   settings,
-  currentUser
+  currentUser,
+  selectedPaymentMethod,
+  cashTendered,
+  changeUSD,
+  changeKHR
 }) => {
   const [language, setLanguage] = useState<'en' | 'kh'>(initialLanguage || 'kh');
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('khqr');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  const activeMethod = selectedPaymentMethod;
 
   const isKh = language === 'kh';
 
@@ -109,8 +118,10 @@ export const CustomerDisplayModal: React.FC<CustomerDisplayModalProps> = ({
 
   // Open in a detached second monitor / customer facing window
   const openInNewCustomerTab = () => {
-    const url = window.location.href;
-    window.open(url, '_blank', 'width=1200,height=800,menubar=no,status=no,titlebar=no');
+    const storeId = currentUser?.id || 'admin';
+    const url = `${window.location.origin}${window.location.pathname}?mode=customer_display&storeId=${encodeURIComponent(storeId)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    onClose();
   };
 
   // Isolated store / merchant branding based on currentUser / settings
@@ -373,132 +384,34 @@ export const CustomerDisplayModal: React.FC<CustomerDisplayModalProps> = ({
                 <CreditCard className="w-4 h-4 text-rose-500" />
                 <span>{isKh ? 'វិធីសាស្ត្រទូទាត់ប្រាក់ (Payment Method)' : 'Payment Method'}</span>
               </h3>
-              <span className="text-[11px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                Live Checkout
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                activeMethod 
+                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' 
+                  : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+              }`}>
+                {activeMethod ? (isKh ? 'បានជ្រើសរើស' : 'Selected') : (isKh ? 'រង់ចាំការជ្រើសរើស' : 'Awaiting Cashier')}
               </span>
             </div>
 
-            {/* Payment Method Tabs */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedMethod('khqr')}
-                className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  selectedMethod === 'khqr'
-                    ? 'bg-rose-500/20 border-rose-500 text-rose-300 font-bold shadow-xs'
-                    : 'bg-slate-800/70 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <QrCode className="w-5 h-5 text-rose-400" />
-                <span className="text-[11px] font-bold text-center">
-                  {isKh ? 'ស្កេន KHQR' : 'Scan KHQR'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedMethod('cash')}
-                className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  selectedMethod === 'cash'
-                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold shadow-xs'
-                    : 'bg-slate-800/70 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <Banknote className="w-5 h-5 text-emerald-400" />
-                <span className="text-[11px] font-bold text-center">
-                  {isKh ? 'សាច់ប្រាក់' : 'Cash'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedMethod('card')}
-                className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  selectedMethod === 'card'
-                    ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 font-bold shadow-xs'
-                    : 'bg-slate-800/70 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <CreditCard className="w-5 h-5 text-indigo-400" />
-                <span className="text-[11px] font-bold text-center">
-                  {isKh ? 'កាតធនាគារ' : 'Card'}
-                </span>
-              </button>
-            </div>
-
-            {/* Tab 1: KHQR Display */}
-            {selectedMethod === 'khqr' && (
-              <div className="bg-slate-800/60 rounded-3xl p-4 sm:p-5 border border-slate-700/80 flex flex-col items-center text-center space-y-3.5 animate-in fade-in">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-bold">
-                  <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Bakong KHQR Payment</span>
+            {/* If NO payment method selected by cashier yet, show waiting state */}
+            {!activeMethod ? (
+              <div className="bg-slate-800/40 rounded-3xl p-6 sm:p-8 border-2 border-dashed border-slate-700/80 flex flex-col items-center text-center space-y-4 animate-in fade-in flex-1 justify-center my-auto">
+                <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                  <Clock className="w-8 h-8 text-indigo-400 animate-pulse" />
                 </div>
-
-                {/* QR Code Container */}
-                <div className="p-3 bg-white rounded-3xl shadow-xl border-4 border-rose-500/20 max-w-[220px] sm:max-w-[240px] w-full aspect-square flex flex-col items-center justify-center" data-preserve-white="true">
-                  <img 
-                    src={displayQrSrc} 
-                    alt="Bakong KHQR" 
-                    className="w-full h-full object-contain rounded-2xl"
-                  />
-                </div>
-
-                {/* Bank and Account Details */}
-                <div className="w-full space-y-1.5">
-                  <div className="text-xs font-bold text-rose-400 uppercase tracking-wider">
-                    {bankName}
-                  </div>
-                  <h4 className="text-base sm:text-lg font-black text-white truncate">
-                    {merchantName}
-                  </h4>
-                  <p className="text-xs text-slate-400 font-semibold truncate">
-                    {accountHolder}
-                  </p>
-
-                  {bankAccountNo && (
-                    <div className="pt-1 flex items-center justify-center gap-2">
-                      <code className="text-xs font-mono font-bold bg-slate-900 px-3 py-1 rounded-xl text-slate-300 border border-slate-700">
-                        {bankAccountNo}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={handleCopyAccount}
-                        className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 cursor-pointer transition-colors"
-                        title="Copy Account Number"
-                      >
-                        {copiedAccount ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
-                  {isKh 
-                    ? 'សូមបើក App ធនាគារណាមួយ (ABA, Wing, ACLEDA, Bakong...) ដើម្បីស្កេនទូទាត់ប្រាក់' 
-                    : 'Open any mobile banking app to scan and pay seamlessly'}
-                </div>
-              </div>
-            )}
-
-            {/* Tab 2: Cash Display */}
-            {selectedMethod === 'cash' && (
-              <div className="bg-slate-800/60 rounded-3xl p-6 border border-slate-700/80 flex flex-col items-center text-center space-y-4 animate-in fade-in flex-1 justify-center">
-                <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
-                  <Banknote className="w-8 h-8" />
-                </div>
-                <div className="space-y-1">
+                <div className="space-y-1.5 max-w-xs">
                   <h4 className="text-base font-bold text-white">
-                    {isKh ? 'ទូទាត់ដោយសាច់ប្រាក់សុទ្ធ (Cash Payment)' : 'Cash Payment at Counter'}
+                    {isKh ? 'រង់ចាំអ្នកគិតលុយជ្រើសរើសវិធីសាស្ត្រទូទាត់' : 'Waiting for Cashier Selection'}
                   </h4>
-                  <p className="text-xs text-slate-400 max-w-xs">
+                  <p className="text-xs text-slate-400 leading-relaxed">
                     {isKh 
-                      ? 'សូមប្រគល់ប្រាក់សុទ្ធជូនបុគ្គលិកគិតលុយនៅបញ្ជរ' 
-                      : 'Please hand over cash to the cashier at the counter'}
+                      ? 'សូមពិនិត្យមុខទំនិញខាងឆ្វេងដៃ។ វិធីសាស្ត្រទូទាត់ (KHQR, Cash, Card) នឹងបង្ហាញនៅពេលអ្នកគិតលុយជ្រើសរើសនៅលើ Counter។' 
+                      : 'Payment method will automatically appear once the cashier selects it at the counter.'}
                   </p>
                 </div>
-                <div className="p-4 rounded-2xl bg-slate-900 border border-slate-700 w-full max-w-xs">
-                  <div className="text-xs text-slate-400">{isKh ? 'ទឹកប្រាក់ត្រូវទូទាត់:' : 'Amount to Pay:'}</div>
-                  <div className="text-2xl font-black text-emerald-400 font-mono mt-0.5">
+                <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-700 w-full max-w-xs space-y-1">
+                  <div className="text-xs text-slate-400">{isKh ? 'ទឹកប្រាក់ត្រូវទូទាត់:' : 'Total Due:'}</div>
+                  <div className="text-2xl font-black text-amber-300 font-mono">
                     {formatUSD(total)}
                   </div>
                   <div className="text-xs text-indigo-300 font-mono">
@@ -506,30 +419,149 @@ export const CustomerDisplayModal: React.FC<CustomerDisplayModalProps> = ({
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* Tab 3: Card / POS Terminal Display */}
-            {selectedMethod === 'card' && (
-              <div className="bg-slate-800/60 rounded-3xl p-6 border border-slate-700/80 flex flex-col items-center text-center space-y-4 animate-in fade-in flex-1 justify-center">
-                <div className="w-16 h-16 rounded-3xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
-                  <CreditCard className="w-8 h-8" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-base font-bold text-white">
-                    {isKh ? 'ទូទាត់ដោយកាតធនាគារ (Card Payment)' : 'Credit / Debit Card Terminal'}
-                  </h4>
-                  <p className="text-xs text-slate-400 max-w-xs">
-                    {isKh 
-                      ? 'គាំទ្រកាត Visa, Mastercard, UnionPay តាមរយៈម៉ាស៊ីនឆូតកាត (POS)' 
-                      : 'Accepting Visa, Mastercard, and UnionPay via counter POS terminal'}
-                  </p>
-                </div>
-                <div className="p-4 rounded-2xl bg-slate-900 border border-slate-700 w-full max-w-xs">
-                  <div className="text-xs text-slate-400">{isKh ? 'ទឹកប្រាក់ត្រូវទូទាត់:' : 'Total Charge:'}</div>
-                  <div className="text-2xl font-black text-indigo-400 font-mono mt-0.5">
-                    {formatUSD(total)}
+            ) : (
+              <div className="space-y-4 flex-1 flex flex-col">
+                {/* Active Method Badge */}
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-800/80 border border-slate-700">
+                  <div className="flex items-center gap-2.5">
+                    {activeMethod === 'khqr' && <QrCode className="w-5 h-5 text-rose-400" />}
+                    {activeMethod === 'cash' && <Banknote className="w-5 h-5 text-emerald-400" />}
+                    {activeMethod === 'card' && <CreditCard className="w-5 h-5 text-indigo-400" />}
+                    <div>
+                      <div className="text-xs text-slate-400 font-medium">
+                        {isKh ? 'វិធីសាស្ត្រទូទាត់ដែលបានជ្រើស' : 'Selected Payment Method'}
+                      </div>
+                      <div className="text-sm font-bold text-white capitalize">
+                        {activeMethod === 'khqr' ? (isKh ? 'ស្កេនទូទាត់ Bakong KHQR' : 'Bakong KHQR Scan') : 
+                         activeMethod === 'cash' ? (isKh ? 'ទូទាត់ដោយសាច់ប្រាក់សុទ្ធ (Cash)' : 'Cash Payment') : 
+                         (isKh ? 'កាតធនាគារ (Card)' : 'Card Terminal')}
+                      </div>
+                    </div>
                   </div>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
                 </div>
+
+                {/* KHQR Display */}
+                {activeMethod === 'khqr' && (
+                  <div className="bg-slate-800/60 rounded-3xl p-4 sm:p-5 border border-slate-700/80 flex flex-col items-center text-center space-y-3.5 animate-in fade-in">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-bold">
+                      <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Bakong KHQR Payment</span>
+                    </div>
+
+                    <div className="p-3 bg-white rounded-3xl shadow-xl border-4 border-rose-500/20 max-w-[220px] sm:max-w-[240px] w-full aspect-square flex flex-col items-center justify-center" data-preserve-white="true">
+                      <img 
+                        src={displayQrSrc} 
+                        alt="Bakong KHQR" 
+                        className="w-full h-full object-contain rounded-2xl"
+                      />
+                    </div>
+
+                    <div className="w-full space-y-1.5">
+                      <div className="text-xs font-bold text-rose-400 uppercase tracking-wider">
+                        {bankName}
+                      </div>
+                      <h4 className="text-base sm:text-lg font-black text-white truncate">
+                        {merchantName}
+                      </h4>
+                      <p className="text-xs text-slate-400 font-semibold truncate">
+                        {accountHolder}
+                      </p>
+
+                      {bankAccountNo && (
+                        <div className="pt-1 flex items-center justify-center gap-2">
+                          <code className="text-xs font-mono font-bold bg-slate-900 px-3 py-1 rounded-xl text-slate-300 border border-slate-700">
+                            {bankAccountNo}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={handleCopyAccount}
+                            className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 cursor-pointer transition-colors"
+                            title="Copy Account Number"
+                          >
+                            {copiedAccount ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
+                      {isKh 
+                        ? 'សូមបើក App ធនាគារណាមួយ (ABA, Wing, ACLEDA, Bakong...) ដើម្បីស្កេនទូទាត់ប្រាក់' 
+                        : 'Open any mobile banking app to scan and pay seamlessly'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cash Display */}
+                {activeMethod === 'cash' && (
+                  <div className="bg-slate-800/60 rounded-3xl p-6 border border-slate-700/80 flex flex-col items-center text-center space-y-4 animate-in fade-in flex-1 justify-center">
+                    <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                      <Banknote className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-base font-bold text-white">
+                        {isKh ? 'ទូទាត់ដោយសាច់ប្រាក់សុទ្ធ (Cash Payment)' : 'Cash Payment at Counter'}
+                      </h4>
+                      <p className="text-xs text-slate-400 max-w-xs">
+                        {isKh 
+                          ? 'សូមប្រគល់ប្រាក់សុទ្ធជូនបុគ្គលិកគិតលុយនៅបញ្ជរ' 
+                          : 'Please hand over cash to the cashier at the counter'}
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-700 w-full max-w-xs space-y-2">
+                      <div>
+                        <div className="text-xs text-slate-400">{isKh ? 'ទឹកប្រាក់ត្រូវទូទាត់:' : 'Amount to Pay:'}</div>
+                        <div className="text-2xl font-black text-emerald-400 font-mono mt-0.5">
+                          {formatUSD(total)}
+                        </div>
+                        <div className="text-xs text-indigo-300 font-mono">
+                          {formatKHR(total, khrRate)}
+                        </div>
+                      </div>
+
+                      {cashTendered !== undefined && cashTendered > 0 && (
+                        <div className="pt-2 border-t border-slate-800 flex justify-between text-xs">
+                          <span className="text-slate-400">{isKh ? 'ប្រាក់ទទួល:' : 'Cash Tendered:'}</span>
+                          <span className="font-mono font-bold text-white">${cashTendered.toFixed(2)}</span>
+                        </div>
+                      )}
+
+                      {changeUSD !== undefined && changeUSD > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-emerald-400 font-bold">{isKh ? 'ប្រាក់អាប់:' : 'Change Due:'}</span>
+                          <span className="font-mono font-bold text-emerald-400">${changeUSD.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Card Display */}
+                {activeMethod === 'card' && (
+                  <div className="bg-slate-800/60 rounded-3xl p-6 border border-slate-700/80 flex flex-col items-center text-center space-y-4 animate-in fade-in flex-1 justify-center">
+                    <div className="w-16 h-16 rounded-3xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                      <CreditCard className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-base font-bold text-white">
+                        {isKh ? 'ទូទាត់ដោយកាតធនាគារ (Card Payment)' : 'Credit / Debit Card Terminal'}
+                      </h4>
+                      <p className="text-xs text-slate-400 max-w-xs">
+                        {isKh 
+                          ? 'គាំទ្រកាត Visa, Mastercard, UnionPay តាមរយៈម៉ាស៊ីនឆូតកាត (POS)' 
+                          : 'Accepting Visa, Mastercard, and UnionPay via counter POS terminal'}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-700 w-full max-w-xs">
+                      <div className="text-xs text-slate-400">{isKh ? 'ទឹកប្រាក់ត្រូវទូទាត់:' : 'Total Charge:'}</div>
+                      <div className="text-2xl font-black text-indigo-400 font-mono mt-0.5">
+                        {formatUSD(total)}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

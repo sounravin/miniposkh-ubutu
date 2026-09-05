@@ -13,7 +13,8 @@ import {
   ShoppingBag,
   RotateCcw,
   Barcode,
-  Tv
+  Tv,
+  ExternalLink
 } from 'lucide-react';
 import { CartItem, TableInfo } from '../types';
 import { formatUSD, formatKHR } from '../utils/currency';
@@ -364,10 +365,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 id="cart-customer-display-btn"
                 type="button"
                 onClick={onOpenCustomerDisplay}
+                title={isKh ? "បើកអេក្រង់អតិថិជនក្នុងផ្ទាំងថ្មី (New Tab / Dual Screen)" : "Open Customer Display in New Tab"}
                 className="w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 border-emerald-200 transition-all cursor-pointer active:scale-[0.99]"
               >
                 <Tv className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{isKh ? 'បង្ហាញអេក្រង់អតិថិជន (Customer Screen)' : 'Customer Display Screen'}</span>
+                <span>{isKh ? 'អេក្រង់អតិថិជន (New Page)' : 'Customer Screen (New Tab)'}</span>
+                <ExternalLink className="w-3.5 h-3.5 text-emerald-600 opacity-70" />
               </button>
             )}
 

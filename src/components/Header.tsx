@@ -23,7 +23,8 @@ import {
   Crown,
   Moon,
   Sun,
-  Tv
+  Tv,
+  ExternalLink
 } from 'lucide-react';
 import { Product, User, AppNotification, ActiveView } from '../types';
 import { Logo } from './Logo';
@@ -341,19 +342,20 @@ export const Header: React.FC<HeaderProps> = ({
           <span>{isKh ? "ថែមទំនិញ" : "Add Product"}</span>
         </button>
 
-        {/* Customer Facing Display Screen Button (Option for customer to view checkout & payment) */}
+        {/* Customer Facing Display Screen Button (Opens Customer Display in New Page/Tab) */}
         {onOpenCustomerDisplay && (
           <button
             id="header-customer-display-btn"
             type="button"
             onClick={onOpenCustomerDisplay}
-            title={isKh ? "ផ្ទាំងអេក្រង់អតិថិជន (Customer Display / Checkout)" : "Customer Display Screen (Checkout & Payment)"}
+            title={isKh ? "បើកអេក្រង់អតិថិជនក្នុងផ្ទាំងថ្មី (Open Customer Display in New Page)" : "Open Customer Display Screen in New Tab"}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 active:bg-emerald-200 rounded-xl border border-emerald-200 dark:border-emerald-800 transition-all cursor-pointer shrink-0 shadow-2xs group"
           >
             <Tv className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
             <span className="hidden sm:inline font-bold">
               {isKh ? "អេក្រង់អតិថិជន" : "Customer Screen"}
             </span>
+            <ExternalLink className="w-3 h-3 text-emerald-600 dark:text-emerald-400 opacity-70 hidden sm:inline" />
           </button>
         )}
       </div>

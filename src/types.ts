@@ -22,7 +22,7 @@ export interface CartItem {
   itemNote?: string;
 }
 
-export type PaymentMethod = 'cash' | 'khqr' | 'card' | 'aba_pay';
+export type PaymentMethod = 'cash' | 'khqr' | 'card' | 'aba_pay' | 'debt';
 
 export interface Order {
   id: string;

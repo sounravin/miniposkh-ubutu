@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Product, 
   CartItem, 
@@ -11,7 +11,8 @@ import {
   User,
   ActivityLog,
   AppNotification,
-  ActiveSession
+  ActiveSession,
+  PaymentMethod
 } from './types';
 import { 
   INITIAL_PRODUCTS, 
@@ -42,10 +43,16 @@ import { WelcomeAuthPage } from './components/WelcomeAuthPage';
 import { AdminConsole } from './components/AdminConsole';
 import { UserProfileModal } from './components/UserProfileModal';
 import { CustomerCatalogView } from './components/CustomerCatalogView';
+import { CustomerDisplayView } from './components/CustomerDisplayView';
 import { CustomerMenuShareModal } from './components/CustomerMenuShareModal';
 import { IncomingOnlineOrdersDrawer } from './components/IncomingOnlineOrdersDrawer';
 import { AddToHomeScreenGuideModal } from './components/AddToHomeScreenGuideModal';
 import { UpgradePlanModal } from './components/UpgradePlanModal';
+import { 
+  broadcastCustomerDisplayState, 
+  subscribeToCustomerDisplay, 
+  CustomerDisplayState 
+} from './utils/customerDisplaySync';
 import { Share2 } from 'lucide-react';
 import {
   initializeFirestoreDatabase,
@@ -568,6 +575,94 @@ export default function App() {
   const [isA2HSGuideOpen, setIsA2HSGuideOpen] = useState(false);
   const [isUpgradePlanModalOpen, setIsUpgradePlanModalOpen] = useState(false);
 
+  // Counter payment state for synchronizing with Customer Display
+  const [counterPaymentMethod, setCounterPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [cashTenderedState, setCashTenderedState] = useState<number | undefined>(undefined);
+  const [changeUSDState, setChangeUSDState] = useState<number | undefined>(undefined);
+  const [changeKHRState, setChangeKHRState] = useState<number | undefined>(undefined);
+
+  // Cart financial totals for Customer Screen Sync
+  const cartSubtotal = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const cartDiscountAmount = discountType === 'percent' ? (cartSubtotal * discount) / 100 : discount;
+  const cartDiscountedSubtotal = Math.max(0, cartSubtotal - cartDiscountAmount);
+  const cartTax = cartDiscountedSubtotal * settings.taxRate;
+  const cartTotal = cartDiscountedSubtotal + cartTax;
+
+  // Real-time broadcast to Customer Facing Screen (New Page / Dual Screen)
+  const syncCustomerDisplay = useCallback((override?: Partial<CustomerDisplayState>) => {
+    const shopTitleKh = currentUser?.invoiceShopNameKh || currentUser?.fullName || settings.shopNameKh || settings.shopName || 'MINI MART POS';
+    const shopTitleEn = currentUser?.invoiceShopName || currentUser?.fullName || settings.shopName || 'MINI MART POS';
+
+    const payload: CustomerDisplayState = {
+      storeId: currentUser?.id || 'admin',
+      storeName: shopTitleEn,
+      storeNameKh: shopTitleKh,
+      phone: currentUser?.phone || settings.phone,
+      email: currentUser?.email || settings.email,
+      cartItems,
+      subtotal: cartSubtotal,
+      discount,
+      discountType,
+      tax: cartTax,
+      taxRate: settings.taxRate,
+      total: cartTotal,
+      khrRate: settings.khrExchangeRate,
+      selectedTable,
+      customerName,
+      orderNote,
+      cashierName: currentUser?.fullName || cashierName,
+      isCheckingOut: isPaymentModalOpen,
+      selectedPaymentMethod: isPaymentModalOpen ? counterPaymentMethod : null,
+      cashTendered: cashTenderedState,
+      changeDueUSD: changeUSDState,
+      changeDueKHR: changeKHRState,
+      khqrImage: currentUser?.khqrImage || settings.khqrImage || '',
+      khqrMerchantName: currentUser?.khqrMerchantName || settings.khqrMerchantName || shopTitleKh,
+      khqrAccountName: currentUser?.khqrAccountName || settings.khqrAccountName || currentUser?.fullName || '',
+      khqrAccountNumber: currentUser?.khqrAccountNumber || settings.khqrAccountNumber || '',
+      khqrBankName: currentUser?.khqrBankName || settings.khqrBankName || 'ABA Bank (KHQR)',
+      isOrderCompleted: false,
+      updatedAt: Date.now(),
+      ...override
+    };
+
+    broadcastCustomerDisplayState(payload);
+  }, [
+    currentUser, settings, cartItems, cartSubtotal, discount, discountType,
+    cartTax, cartTotal, selectedTable, customerName, orderNote, cashierName,
+    isPaymentModalOpen, counterPaymentMethod, cashTenderedState, changeUSDState, changeKHRState
+  ]);
+
+  // Sync state whenever cart or checkout state changes
+  useEffect(() => {
+    syncCustomerDisplay();
+  }, [syncCustomerDisplay]);
+
+  // Handle request from newly opened customer display page to pull latest state
+  useEffect(() => {
+    const unsubscribe = subscribeToCustomerDisplay(() => {}, () => {
+      syncCustomerDisplay();
+    });
+    return () => unsubscribe();
+  }, [syncCustomerDisplay]);
+
+  // Open customer display in dedicated new page / second monitor tab
+  const handleOpenCustomerDisplay = () => {
+    const storeId = currentUser?.id || 'admin';
+    const url = `${window.location.origin}${window.location.pathname}?mode=customer_display&storeId=${encodeURIComponent(storeId)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    syncCustomerDisplay();
+    addNotification({
+      title: language === 'kh' ? '🖥️ បានបើកអេក្រង់អតិថិជន' : '🖥️ Customer Display Opened',
+      desc: language === 'kh'
+        ? 'ផ្ទាំងអេក្រង់អតិថិជនត្រូវបានបើកក្នុង New Page រួចរាល់។ លោកអ្នកអាចទាញដាក់លើ Monitor ទី២ បាន។'
+        : 'Customer display screen opened in a new page/tab for customer-facing monitor.',
+      type: 'success',
+      category: 'system',
+      linkView: 'pos'
+    });
+  };
+
   // BroadcastChannel listener for real-time customer online orders
   useEffect(() => {
     if (typeof BroadcastChannel !== 'undefined') {
@@ -777,6 +872,28 @@ export default function App() {
     // Complete Order UI
     setIsPaymentModalOpen(false);
     setActiveReceiptOrder(orderWithUser);
+
+    // Broadcast completion to customer facing screen
+    syncCustomerDisplay({
+      isOrderCompleted: true,
+      completedOrderNumber: orderWithUser.orderNumber,
+      cartItems: orderWithUser.items || [],
+      total: orderWithUser.total,
+      selectedPaymentMethod: orderWithUser.paymentMethod
+    });
+    setTimeout(() => {
+      setCounterPaymentMethod(null);
+      setCashTenderedState(undefined);
+      setChangeUSDState(undefined);
+      setChangeKHRState(undefined);
+      syncCustomerDisplay({
+        isOrderCompleted: false,
+        selectedPaymentMethod: null,
+        cartItems: [],
+        total: 0,
+        subtotal: 0
+      });
+    }, 5000);
 
     // Dispatch real-time sale notification
     addNotification({
@@ -1090,14 +1207,32 @@ export default function App() {
   // Calculate pending online orders strictly for current user
   const pendingOnlineOrders = userOrders.filter(o => o.status === 'pending_online');
 
-  // Check if opened directly via customer self-order link (?mode=customer_menu)
-  const isDirectCustomerMenu = typeof window !== 'undefined' && 
-    (window.location.search.includes('mode=customer_menu') || window.location.hash.includes('customer_menu'));
-
   // Get targeted storeId from query string (?storeId=...)
   const rawStoreId = typeof window !== 'undefined'
     ? (new URLSearchParams(window.location.search).get('storeId') || new URLSearchParams(window.location.search).get('userId') || '')
     : '';
+
+  // Check if opened directly via customer display (?mode=customer_display)
+  const isDirectCustomerDisplay = typeof window !== 'undefined' && 
+    (window.location.search.includes('mode=customer_display') || window.location.hash.includes('customer_display'));
+
+  if (isDirectCustomerDisplay) {
+    const targetUser = users.find(u => 
+      (rawStoreId && (u.id === rawStoreId || u.username.toLowerCase() === rawStoreId.toLowerCase()))
+    );
+
+    return (
+      <CustomerDisplayView
+        storeId={rawStoreId || targetUser?.id || currentUser?.id || 'admin'}
+        defaultUser={targetUser || currentUser}
+        defaultSettings={settings}
+      />
+    );
+  }
+
+  // Check if opened directly via customer self-order link (?mode=customer_menu)
+  const isDirectCustomerMenu = typeof window !== 'undefined' && 
+    (window.location.search.includes('mode=customer_menu') || window.location.hash.includes('customer_menu'));
 
   // If accessed directly via customer self-order link (?mode=customer_menu), render the Customer Dashboard immediately
   if (isDirectCustomerMenu) {
@@ -1249,7 +1384,7 @@ export default function App() {
           }}
           openBarcodeScanner={() => setIsBarcodeScannerOpen(true)}
           openNewProductModal={() => setActiveView('products')}
-          onOpenCustomerDisplay={() => setIsCustomerDisplayOpen(true)}
+          onOpenCustomerDisplay={handleOpenCustomerDisplay}
           language={language}
           setLanguage={setLanguage}
           theme={theme}
@@ -1313,7 +1448,7 @@ export default function App() {
                   orderNote={orderNote}
                   setOrderNote={setOrderNote}
                   onOpenPayment={() => setIsPaymentModalOpen(true)}
-                  onOpenCustomerDisplay={() => setIsCustomerDisplayOpen(true)}
+                  onOpenCustomerDisplay={handleOpenCustomerDisplay}
                   onSaveDraft={handleSaveDraft}
                   language={language}
                   khrRate={settings.khrExchangeRate}
@@ -1550,14 +1685,20 @@ export default function App() {
       {isPaymentModalOpen && (
         <PaymentModal
           isOpen={isPaymentModalOpen}
-          onClose={() => setIsPaymentModalOpen(false)}
+          onClose={() => {
+            setIsPaymentModalOpen(false);
+            setCounterPaymentMethod(null);
+            setCashTenderedState(undefined);
+            setChangeUSDState(undefined);
+            setChangeKHRState(undefined);
+          }}
           cartItems={cartItems}
-          subtotal={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)}
+          subtotal={cartSubtotal}
           discount={discount}
           discountType={discountType}
-          tax={Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) * settings.taxRate}
+          tax={cartTax}
           taxRate={settings.taxRate}
-          total={Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) + (Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) * settings.taxRate)}
+          total={cartTotal}
           selectedTable={selectedTable}
           customerName={customerName}
           orderNote={orderNote}
@@ -1567,22 +1708,28 @@ export default function App() {
           onOrderCompleted={handleOrderCompleted}
           settings={settings}
           currentUser={currentUser}
-          onOpenCustomerDisplay={() => setIsCustomerDisplayOpen(true)}
+          onOpenCustomerDisplay={handleOpenCustomerDisplay}
+          onPaymentMethodChange={(method, tendered, changeUSD, changeKHR) => {
+            setCounterPaymentMethod(method);
+            setCashTenderedState(tendered);
+            setChangeUSDState(changeUSD);
+            setChangeKHRState(changeKHR);
+          }}
         />
       )}
 
-      {/* Customer Facing Display Screen Modal (Option for customer to view checkout & payment) */}
+      {/* Customer Facing Display Screen Modal (In-page preview option) */}
       {isCustomerDisplayOpen && (
         <CustomerDisplayModal
           isOpen={isCustomerDisplayOpen}
           onClose={() => setIsCustomerDisplayOpen(false)}
           cartItems={cartItems}
-          subtotal={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)}
+          subtotal={cartSubtotal}
           discount={discount}
           discountType={discountType}
-          tax={Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) * settings.taxRate}
+          tax={cartTax}
           taxRate={settings.taxRate}
-          total={Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) + (Math.max(0, cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) - (discountType === 'percent' ? (cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * discount) / 100 : discount)) * settings.taxRate)}
+          total={cartTotal}
           selectedTable={selectedTable}
           customerName={customerName}
           orderNote={orderNote}
@@ -1591,6 +1738,10 @@ export default function App() {
           language={language}
           settings={settings}
           currentUser={currentUser}
+          selectedPaymentMethod={counterPaymentMethod}
+          cashTendered={cashTenderedState}
+          changeUSD={changeUSDState}
+          changeKHR={changeKHRState}
         />
       )}
 
