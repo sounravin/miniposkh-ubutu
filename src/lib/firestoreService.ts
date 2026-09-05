@@ -450,6 +450,107 @@ export async function uploadImageToServer(
   return imageData; // Fallback to base64 if offline
 }
 
+// Helper to upload Video Tutorial (.mp4, .webm, etc.) directly to Ubuntu Server storage
+export async function uploadVideoTutorialToServer(
+  file: File,
+  title?: string,
+  onProgress?: (percent: number) => void
+): Promise<{ success: boolean; url?: string; filename?: string; error?: string }> {
+  try {
+    if (typeof window === 'undefined' || !window.fetch) {
+      return { success: false, error: 'Offline / window not available' };
+    }
+
+    // Use XMLHttpRequest for accurate upload progress tracking
+    return await new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload-video', true);
+      xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+      xhr.setRequestHeader('x-filename', file.name);
+
+      if (onProgress && xhr.upload) {
+        xhr.upload.onprogress = (evt) => {
+          if (evt.lengthComputable) {
+            const percent = Math.round((evt.loaded / evt.total) * 100);
+            onProgress(percent);
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.success && res.url) {
+              // Update local settings cache
+              const currentSettings = getCachedData<ShopSettings>(LOCAL_STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+              const updated: ShopSettings = {
+                ...currentSettings,
+                tutorialVideoUrl: res.url,
+                tutorialVideoTitle: title || currentSettings.tutorialVideoTitle || 'របៀបដំឡើង MINI MART POS លើទូរស័ព្ទ (Add to Home Screen)'
+              };
+              setCachedData(LOCAL_STORAGE_KEYS.SETTINGS, updated);
+              window.dispatchEvent(new CustomEvent('minipos:settings_updated', { detail: updated }));
+              resolve({ success: true, url: res.url, filename: res.filename });
+              return;
+            }
+          } catch (e) {
+            resolve({ success: false, error: 'Failed to parse server response' });
+            return;
+          }
+        }
+        resolve({ success: false, error: `Upload failed with status ${xhr.status}` });
+      };
+
+      xhr.onerror = () => {
+        resolve({ success: false, error: 'Network error during video upload' });
+      };
+
+      xhr.send(file);
+    });
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Unknown upload error' };
+  }
+}
+
+// Save Tutorial Video Settings
+export async function saveTutorialVideoSettings(videoUrl: string, title?: string): Promise<void> {
+  const currentSettings = getCachedData<ShopSettings>(LOCAL_STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+  const updated: ShopSettings = {
+    ...currentSettings,
+    tutorialVideoUrl: videoUrl,
+    tutorialVideoTitle: title || currentSettings.tutorialVideoTitle || 'របៀបដំឡើង MINI MART POS លើទូរស័ព្ទ (Add to Home Screen)'
+  };
+  setCachedData(LOCAL_STORAGE_KEYS.SETTINGS, updated);
+  try {
+    if (typeof window !== 'undefined' && window.fetch) {
+      await fetch('/api/settings/tutorial-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl, title: updated.tutorialVideoTitle })
+      });
+    }
+  } catch {}
+  window.dispatchEvent(new CustomEvent('minipos:settings_updated', { detail: updated }));
+}
+
+// Delete Tutorial Video from Ubuntu Server
+export async function deleteTutorialVideoFromServer(): Promise<void> {
+  const currentSettings = getCachedData<ShopSettings>(LOCAL_STORAGE_KEYS.SETTINGS, INITIAL_SETTINGS);
+  const updated = { ...currentSettings };
+  delete updated.tutorialVideoUrl;
+  delete updated.tutorialVideoTitle;
+  setCachedData(LOCAL_STORAGE_KEYS.SETTINGS, updated);
+  try {
+    if (typeof window !== 'undefined' && window.fetch) {
+      await fetch('/api/settings/tutorial-video', {
+        method: 'DELETE'
+      });
+    }
+  } catch {}
+  window.dispatchEvent(new CustomEvent('minipos:settings_updated', { detail: updated }));
+}
+
 // Save or Update Product (Persists to local storage & Ubuntu Server)
 export async function saveProductToFirestore(product: Product): Promise<void> {
   // If product has a base64 image, upload to Ubuntu Server storage

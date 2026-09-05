@@ -102,6 +102,9 @@ export interface ShopSettings {
   khqrBankName?: string; // Bank Name (e.g. ABA Bank, ACLEDA, Bakong, Wing)
   // Admin KHQR Settings for Membership Plan Upgrades
   adminUpgradeKhqr?: AdminUpgradeKhqrSettings;
+  // Tutorial Video (Stored directly on Ubuntu server disk)
+  tutorialVideoUrl?: string;
+  tutorialVideoTitle?: string;
 }
 
 export interface AdminUpgradeKhqrSettings {

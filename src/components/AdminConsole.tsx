@@ -53,7 +53,12 @@ import {
   Wifi,
   Globe,
   Monitor,
-  Save
+  Save,
+  Play,
+  Video,
+  VideoOff,
+  Film,
+  Copy
 } from 'lucide-react';
 import { User, ActivityLog, Product, Order, Expense, Customer, TableInfo, ShopSettings, UpgradeRequest, ActiveSession } from '../types';
 import { 
@@ -81,7 +86,10 @@ import {
   importDatabaseBackupFile,
   fetchActiveSessionsFromServer,
   getOrCreateSessionId,
-  uploadImageToServer
+  uploadImageToServer,
+  uploadVideoTutorialToServer,
+  saveTutorialVideoSettings,
+  deleteTutorialVideoFromServer
 } from '../lib/firestoreService';
 import { resizeImageFile } from '../lib/imageUtils';
 
@@ -373,11 +381,131 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   }, []);
 
   // Upgrade Requests Management State & Subscription
-  const [adminTab, setAdminTab] = useState<'members' | 'sessions' | 'upgrades' | 'logs'>('members');
+  const [adminTab, setAdminTab] = useState<'members' | 'sessions' | 'upgrades' | 'video_tutorial' | 'logs'>('members');
   const [upgradeRequests, setUpgradeRequests] = useState<UpgradeRequest[]>(() => getCachedUpgradeRequests());
   const [processingUpgradeId, setProcessingUpgradeId] = useState<string | null>(null);
   const [previewReceiptImage, setPreviewReceiptImage] = useState<string | null>(null);
   const [upgradeFilter, setUpgradeFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+
+  // Video Tutorial Management State (Self-Hosted on Ubuntu Server)
+  const [videoTutorialUrl, setVideoTutorialUrl] = useState<string>(settings?.tutorialVideoUrl || '');
+  const [videoTutorialTitle, setVideoTutorialTitle] = useState<string>(settings?.tutorialVideoTitle || 'របៀបដំឡើង MINI MART POS លើទូរស័ព្ទ (Add to Home Screen)');
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const [videoUploadStatusText, setVideoUploadStatusText] = useState('');
+  const [videoFeedback, setVideoFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isSavingVideoMeta, setIsSavingVideoMeta] = useState(false);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Synchronize Tutorial Video settings from Server on Mount
+  useEffect(() => {
+    const fetchVideoSettings = async () => {
+      try {
+        const res = await fetch('/api/settings/tutorial-video');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.tutorialVideoUrl) {
+            setVideoTutorialUrl(data.tutorialVideoUrl);
+          }
+          if (data.tutorialVideoTitle) {
+            setVideoTutorialTitle(data.tutorialVideoTitle);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch tutorial-video setting:', err);
+      }
+    };
+    fetchVideoSettings();
+  }, []);
+
+  // Handle Video File Upload to Ubuntu Server (/uploads/videos/)
+  const handleVideoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|m4v|mkv)$/i)) {
+      setVideoFeedback({
+        type: 'error',
+        message: isKh ? 'សូមជ្រើសរើសឯកសារជាវីដេអូ (.mp4, .webm, .mov)!' : 'Please select a valid video file (.mp4, .webm, .mov)!'
+      });
+      return;
+    }
+
+    // Check size warning (> 200MB)
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    setIsUploadingVideo(true);
+    setVideoUploadProgress(0);
+    setVideoUploadStatusText(isKh ? `កំពុងចាប់ផ្តើម Upload (${sizeMB} MB)...` : `Starting upload (${sizeMB} MB)...`);
+    setVideoFeedback(null);
+
+    try {
+      const res = await uploadVideoTutorialToServer(file, videoTutorialTitle, (percent) => {
+        setVideoUploadProgress(percent);
+        if (percent === 100) {
+          setVideoUploadStatusText(isKh ? 'កំពុងសរសេរចូល disk /uploads/videos/ លើ Ubuntu Server...' : 'Writing to disk in /uploads/videos/ on Ubuntu server...');
+        } else {
+          setVideoUploadStatusText(isKh ? `កំពុង Upload: ${percent}% (${sizeMB} MB)` : `Uploading: ${percent}% (${sizeMB} MB)`);
+        }
+      });
+
+      if (res.success && res.url) {
+        setVideoTutorialUrl(res.url);
+        setVideoFeedback({
+          type: 'success',
+          message: isKh 
+            ? `✅ បាន Upload វីដេអូបានជោគជ័យ! File ត្រូវបានរក្សាទុកលើ Ubuntu Server: ${res.filename}` 
+            : `✅ Tutorial video successfully saved directly to Ubuntu Server! (${res.filename})`
+        });
+      } else {
+        throw new Error(res.error || 'Video upload failed');
+      }
+    } catch (err: any) {
+      setVideoFeedback({
+        type: 'error',
+        message: isKh ? `❌ បរាជ័យក្នុងការ Upload វីដេអូ: ${err.message}` : `❌ Failed to upload video: ${err.message}`
+      });
+    } finally {
+      setIsUploadingVideo(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveVideoMetadata = async () => {
+    setIsSavingVideoMeta(true);
+    try {
+      await saveTutorialVideoSettings(videoTutorialUrl, videoTutorialTitle);
+      setVideoFeedback({
+        type: 'success',
+        message: isKh ? '✅ បានរក្សាទុកការកំណត់វីដេអូបង្រៀនជោគជ័យ!' : '✅ Tutorial video settings saved successfully!'
+      });
+    } catch (err: any) {
+      setVideoFeedback({
+        type: 'error',
+        message: err.message || 'Failed to save settings'
+      });
+    } finally {
+      setIsSavingVideoMeta(false);
+    }
+  };
+
+  const handleDeleteTutorialVideo = async () => {
+    if (!window.confirm(isKh ? 'តើអ្នកពិតជាចង់លុបវីដេអូបង្រៀននេះចេញពី Ubuntu Server ឬ?' : 'Are you sure you want to remove this tutorial video from the Ubuntu server?')) {
+      return;
+    }
+    try {
+      await deleteTutorialVideoFromServer();
+      setVideoTutorialUrl('');
+      setVideoFeedback({
+        type: 'success',
+        message: isKh ? '✅ បានលុបវីដេអូចេញពី Ubuntu Server រួចរាល់' : '✅ Video deleted from Ubuntu server'
+      });
+    } catch (err: any) {
+      setVideoFeedback({
+        type: 'error',
+        message: err.message || 'Failed to delete'
+      });
+    }
+  };
 
   // Admin Upgrade KHQR Configuration State
   const initialAdminKhqr = settings?.adminUpgradeKhqr || getAdminUpgradeKhqrSettings() || {};
@@ -1238,6 +1366,27 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                 adminTab === 'upgrades' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
               }`}>
                 {upgradeRequests.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAdminTab('video_tutorial')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              adminTab === 'video_tutorial'
+                ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md shadow-rose-200'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+            }`}
+            id="tab-admin-video-tutorial"
+          >
+            <Play className="w-4 h-4 text-rose-500 fill-current" />
+            <span>{isKh ? 'វីដេអូបង្រៀន A2HS' : 'A2HS Video Tutorial'}</span>
+            {videoTutorialUrl ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" title="Active on Ubuntu Server" />
+            ) : (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                {isKh ? 'ទទេ' : 'Empty'}
               </span>
             )}
           </button>
@@ -2117,6 +2266,328 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                   );
                 })
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3.5: Video Tutorial Management Studio (Self-Hosted on Ubuntu Server) */}
+        {adminTab === 'video_tutorial' && (
+          <div className="space-y-6">
+            {/* Header Card */}
+            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-2xs">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 shadow-xs">
+                    <Film className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-black text-lg text-slate-900">
+                        {isKh ? 'គ្រប់គ្រងវីដេអូបង្រៀន Add to Home Screen' : 'Add to Home Screen Video Tutorial Studio'}
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Ubuntu Self-Hosted
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
+                      {isKh 
+                        ? 'Upload វីដេអូបង្រៀន (.mp4, .webm, .mov) រក្សាទុកផ្ទាល់លើ Ubuntu Server របស់អ្នក សម្រាប់អោយ User មើលពីរបៀប Add to Home Screen ដោយមិនប្រើ YouTube link ឡើយ (Direct Stream)' 
+                        : 'Upload and serve tutorial videos directly from your Ubuntu server storage (/uploads/videos/) without any external YouTube dependencies.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => videoFileInputRef.current?.click()}
+                    disabled={isUploadingVideo}
+                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-200 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>{isKh ? 'Upload វីដេអូថ្មី' : 'Upload New Video'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Feedback Alert */}
+              {videoFeedback && (
+                <div className={`mt-4 p-3.5 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-2 ${
+                  videoFeedback.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {videoFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{videoFeedback.message}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVideoFeedback(null)}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Hidden Video File Input */}
+            <input
+              type="file"
+              ref={videoFileInputRef}
+              onChange={handleVideoFileSelect}
+              accept="video/mp4,video/webm,video/quicktime,video/*,.mp4,.webm,.mov"
+              className="hidden"
+            />
+
+            {/* Upload Progress Bar (When Uploading) */}
+            {isUploadingVideo && (
+              <div className="bg-white rounded-3xl p-6 border border-rose-200 shadow-md space-y-3 animate-pulse">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-black text-rose-700 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                    <span>{videoUploadStatusText}</span>
+                  </span>
+                  <span className="font-mono font-bold text-rose-600">{videoUploadProgress}%</span>
+                </div>
+                <div className="w-full bg-rose-100 rounded-full h-3 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-rose-500 to-pink-600 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${Math.max(videoUploadProgress, 5)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {isKh 
+                    ? 'វីដេអូកំពុងត្រូវបានបញ្ជូន និងកត់ត្រាផ្ទាល់ចូល folder `data/uploads/videos/` លើ Server Ubuntu របស់អ្នក...' 
+                    : 'Video stream is writing directly into `data/uploads/videos/` on your Ubuntu server...'}
+                </p>
+              </div>
+            )}
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column: Video Preview Player (7 cols) */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <h4 className="font-black text-sm text-slate-900 flex items-center gap-2">
+                      <Video className="w-4 h-4 text-rose-600" />
+                      <span>{isKh ? 'ផ្ទាំងមើលវីដេអូផ្ទាល់ (Live Player Preview)' : 'Live Player Preview'}</span>
+                    </h4>
+                    {videoTutorialUrl && (
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                        HTML5 Direct Stream
+                      </span>
+                    )}
+                  </div>
+
+                  {videoTutorialUrl ? (
+                    <div className="space-y-3">
+                      {/* Direct HTML5 Video Player */}
+                      <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-inner border border-slate-800 group">
+                        <video
+                          key={videoTutorialUrl}
+                          src={videoTutorialUrl}
+                          controls
+                          playsInline
+                          className="w-full h-full object-contain"
+                        >
+                          <source src={videoTutorialUrl} type="video/mp4" />
+                          <source src={videoTutorialUrl} type="video/webm" />
+                          <source src={videoTutorialUrl} type="video/quicktime" />
+                          Your browser does not support HTML5 video tag.
+                        </video>
+                      </div>
+
+                      {/* Video Information & Direct URL */}
+                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-700 truncate">
+                            {videoTutorialTitle || (isKh ? 'វីដេអូបង្រៀន A2HS' : 'A2HS Video Tutorial')}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
+                            Active
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 text-[11px] font-mono bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 text-slate-700 truncate">
+                            {videoTutorialUrl}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(window.location.origin + videoTutorialUrl);
+                              setVideoFeedback({
+                                type: 'success',
+                                message: isKh ? '✅ បានចម្លង Direct URL រួចរាល់!' : '✅ Direct URL copied to clipboard!'
+                              });
+                            }}
+                            className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer shadow-2xs shrink-0"
+                            title="Copy Direct URL"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <a
+                            href={videoTutorialUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 cursor-pointer shadow-2xs shrink-0 inline-flex items-center justify-center"
+                            title="Open in new tab"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Delete Action Button */}
+                      <div className="pt-1 flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={handleDeleteTutorialVideo}
+                          className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{isKh ? 'លុបវីដេអូចេញពី Server' : 'Delete Video from Server'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 space-y-3">
+                      <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-500 mx-auto flex items-center justify-center shadow-xs">
+                        <VideoOff className="w-7 h-7" />
+                      </div>
+                      <div className="space-y-1">
+                        <h5 className="font-bold text-sm text-slate-800">
+                          {isKh ? 'មិនទាន់មានវីដេអូបង្រៀននៅលើ Server ទេ' : 'No Tutorial Video Currently Active'}
+                        </h5>
+                        <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                          {isKh 
+                            ? 'សូមចុចប៊ូតុង "Upload វីដេអូថ្មី" ខាងលើ ឬជ្រើសរើស file ពីកុំព្យូទ័រ ដើម្បី Upload ចូល Server Ubuntu របស់អ្នក។' 
+                            : 'Click "Upload New Video" or drop a video file to store and stream directly from your Ubuntu server.'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => videoFileInputRef.current?.click()}
+                        className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{isKh ? 'ជ្រើសរើសឯកសារវីដេអូ (.mp4)' : 'Select Video File (.mp4)'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Settings & Metadata Editor (5 cols) */}
+              <div className="lg:col-span-5 space-y-4">
+                {/* Upload Card */}
+                <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-2xs space-y-4">
+                  <h4 className="font-black text-sm text-slate-900 flex items-center gap-2 pb-2 border-b border-slate-100">
+                    <CloudUpload className="w-4 h-4 text-rose-600" />
+                    <span>{isKh ? 'Upload វីដេអូថ្មីចូល Ubuntu Server' : 'Upload Video File'}</span>
+                  </h4>
+
+                  <div 
+                    onClick={() => videoFileInputRef.current?.click()}
+                    className="p-6 rounded-2xl border-2 border-dashed border-rose-200 hover:border-rose-400 bg-rose-50/40 hover:bg-rose-50 text-center space-y-2 cursor-pointer transition-all group"
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-white text-rose-600 mx-auto flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-slate-800 block">
+                        {isKh ? 'ចុចទីនេះដើម្បីជ្រើសរើសវីដេអូ' : 'Click to Browse Video'}
+                      </span>
+                      <span className="text-[11px] text-slate-500 block mt-0.5">
+                        .mp4, .webm, .mov (ទំហំរហូតដល់ 250MB)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        {isKh ? 'ចំណងជើងវីដេអូ (Title)' : 'Video Title'}
+                      </label>
+                      <input
+                        type="text"
+                        value={videoTutorialTitle}
+                        onChange={(e) => setVideoTutorialTitle(e.target.value)}
+                        placeholder="របៀបដំឡើង MINI MART POS លើទូរស័ព្ទ..."
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        {isKh ? 'Direct URL (Server URL)' : 'Direct URL (Server URL)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={videoTutorialUrl}
+                        onChange={(e) => setVideoTutorialUrl(e.target.value)}
+                        placeholder="/uploads/videos/tutorial_xxx.mp4"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {isKh 
+                          ? 'អាចកែប្រែដោយផ្ទាល់ ប្រសិនបើអ្នកចម្លងវីដេអូតាមរយៈ SSH ឬ SFTP' 
+                          : 'Can be manually updated if video is placed via SFTP or SSH'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveVideoMetadata}
+                      disabled={isSavingVideoMeta}
+                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{isSavingVideoMeta ? 'Saving...' : (isKh ? 'រក្សាទុកការកំណត់' : 'Save Settings')}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Server Architecture Card */}
+                <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-5 text-white shadow-md space-y-3">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-700/80">
+                    <Server className="w-4 h-4 text-emerald-400" />
+                    <h4 className="font-bold text-xs text-slate-200">
+                      {isKh ? 'ព័ត៌មានបច្ចេកទេស Ubuntu Server' : 'Ubuntu Server Specifications'}
+                    </h4>
+                  </div>
+                  <div className="space-y-2 text-xs text-slate-300">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-slate-400">{isKh ? 'ទីតាំងផ្ទុកលើ Disk:' : 'Storage Disk Path:'}</span>
+                      <code className="text-[11px] font-mono bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">
+                        data/uploads/videos/
+                      </code>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-slate-400">{isKh ? 'ប្រព័ន្ធបញ្ជូន Streaming:' : 'Streaming Route:'}</span>
+                      <code className="text-[11px] font-mono bg-slate-800 px-1.5 py-0.5 rounded text-indigo-400">
+                        /uploads/videos/*
+                      </code>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-slate-400">{isKh ? 'ទម្រង់ Player:' : 'Player Type:'}</span>
+                      <span className="font-bold text-white">Native HTML5 &lt;video&gt;</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-slate-400">{isKh ? 'មិនប្រើ YouTube:' : 'Zero YouTube:'}</span>
+                      <span className="font-bold text-emerald-400">100% Direct Self-Hosted</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

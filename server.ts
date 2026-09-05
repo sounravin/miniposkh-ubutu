@@ -6,14 +6,15 @@ import { createServer as createViteServer } from "vite";
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-// Middleware for parsing JSON with generous limit for images & backups
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+// Middleware for parsing JSON with generous limit for images, videos & backups
+app.use(express.json({ limit: "250mb" }));
+app.use(express.urlencoded({ extended: true, limit: "250mb" }));
 
 // Local Ubuntu Server Data Directory
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "database.json");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+const VIDEOS_DIR = path.join(UPLOADS_DIR, "videos");
 
 // Standard Seed User Accounts (Admin, Manager, Cashiers)
 const SEED_USERS = [
@@ -99,6 +100,9 @@ try {
   }
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(VIDEOS_DIR)) {
+    fs.mkdirSync(VIDEOS_DIR, { recursive: true });
   }
 
   // Seed DB_FILE if missing or missing seed users
@@ -591,6 +595,171 @@ app.post("/api/upload", async (req, res) => {
     });
   } catch (err: any) {
     console.error("Upload error on server:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST Video Upload Handler (Stores video tutorials directly on Ubuntu Server disk in /uploads/videos/)
+app.post("/api/upload-video", async (req, res) => {
+  try {
+    if (!fs.existsSync(VIDEOS_DIR)) {
+      fs.mkdirSync(VIDEOS_DIR, { recursive: true });
+    }
+
+    const contentType = req.headers["content-type"] || "";
+    let finalFileName = "";
+    let fileSizeBytes = 0;
+
+    // Support direct binary stream upload
+    if (contentType.includes("video/") || contentType.includes("application/octet-stream")) {
+      const headerFilename = (req.headers["x-filename"] as string) || "tutorial_a2hs.mp4";
+      const cleanExt = path.extname(headerFilename) || ".mp4";
+      const baseName = path.basename(headerFilename, cleanExt).replace(/[^a-zA-Z0-9_-]/g, "_");
+      finalFileName = `tutorial_${Date.now()}_${baseName}${cleanExt}`;
+      const destPath = path.join(VIDEOS_DIR, finalFileName);
+
+      const writeStream = fs.createWriteStream(destPath);
+      await new Promise<void>((resolve, reject) => {
+        req.pipe(writeStream);
+        req.on("error", reject);
+        writeStream.on("finish", () => {
+          fileSizeBytes = fs.statSync(destPath).size;
+          resolve();
+        });
+        writeStream.on("error", reject);
+      });
+    } else {
+      // JSON body with base64 data
+      const { video, filename, title } = req.body;
+      if (!video) {
+        return res.status(400).json({ success: false, error: "No video data provided" });
+      }
+
+      let ext = ".mp4";
+      let base64Content = video;
+
+      if (typeof video === "string" && video.startsWith("data:video/")) {
+        const match = video.match(/^data:video\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
+        if (match) {
+          ext = `.${match[1] === "quicktime" ? "mov" : match[1]}`;
+          base64Content = match[2];
+        }
+      }
+
+      const cleanFileName = filename
+        ? `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, "")}`
+        : `tutorial_${Date.now()}${ext}`;
+      finalFileName = cleanFileName;
+      const destPath = path.join(VIDEOS_DIR, finalFileName);
+
+      const buffer = Buffer.from(base64Content, "base64");
+      await fs.promises.writeFile(destPath, buffer);
+      fileSizeBytes = buffer.length;
+    }
+
+    const publicUrl = `/uploads/videos/${finalFileName}`;
+
+    // Auto-update database.json settings
+    let fileData: any = {};
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        fileData = JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) || {};
+      } catch {}
+    }
+    if (!fileData.settings) {
+      fileData.settings = {};
+    }
+    fileData.settings.tutorialVideoUrl = publicUrl;
+    if (req.body?.title) {
+      fileData.settings.tutorialVideoTitle = req.body.title;
+    }
+    fileData.updatedAt = new Date().toISOString();
+    await fs.promises.writeFile(DB_FILE, JSON.stringify(fileData, null, 2), "utf-8");
+
+    return res.json({
+      success: true,
+      url: publicUrl,
+      filename: finalFileName,
+      sizeBytes: fileSizeBytes,
+      message: "Video tutorial uploaded and saved to Ubuntu Server in /uploads/videos/"
+    });
+  } catch (err: any) {
+    console.error("Video upload error on server:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET Tutorial Video Settings
+app.get("/api/settings/tutorial-video", (req, res) => {
+  try {
+    let fileData: any = {};
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        fileData = JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) || {};
+      } catch {}
+    }
+    return res.json({
+      success: true,
+      tutorialVideoUrl: fileData?.settings?.tutorialVideoUrl || null,
+      tutorialVideoTitle: fileData?.settings?.tutorialVideoTitle || "របៀបដំឡើង MINI MART POS លើទូរស័ព្ទ (Add to Home Screen)"
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST Save Tutorial Video Settings
+app.post("/api/settings/tutorial-video", async (req, res) => {
+  try {
+    const { videoUrl, title } = req.body;
+    let fileData: any = {};
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        fileData = JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) || {};
+      } catch {}
+    }
+    if (!fileData.settings) {
+      fileData.settings = {};
+    }
+    fileData.settings.tutorialVideoUrl = videoUrl;
+    if (title !== undefined) {
+      fileData.settings.tutorialVideoTitle = title;
+    }
+    fileData.updatedAt = new Date().toISOString();
+    await fs.promises.writeFile(DB_FILE, JSON.stringify(fileData, null, 2), "utf-8");
+    return res.json({ success: true, settings: fileData.settings });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE Tutorial Video Settings
+app.delete("/api/settings/tutorial-video", async (req, res) => {
+  try {
+    let fileData: any = {};
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        fileData = JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) || {};
+      } catch {}
+    }
+    const existingUrl = fileData?.settings?.tutorialVideoUrl;
+    if (existingUrl && existingUrl.startsWith("/uploads/videos/")) {
+      const fileName = path.basename(existingUrl);
+      const filePath = path.join(VIDEOS_DIR, fileName);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch {}
+      }
+    }
+    if (fileData.settings) {
+      delete fileData.settings.tutorialVideoUrl;
+      delete fileData.settings.tutorialVideoTitle;
+    }
+    fileData.updatedAt = new Date().toISOString();
+    await fs.promises.writeFile(DB_FILE, JSON.stringify(fileData, null, 2), "utf-8");
+    return res.json({ success: true, message: "Tutorial video removed from server" });
+  } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
